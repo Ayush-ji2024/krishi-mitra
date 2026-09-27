@@ -1,3 +1,10 @@
+# Project data & trained models (bade files, GitHub pe nahi jaayenge)
+data/
+models/
+
+# OS ki banayi faltu files
+.DS_Store
+Thumbs.db
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
