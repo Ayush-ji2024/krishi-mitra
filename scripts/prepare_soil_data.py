@@ -8,8 +8,8 @@ What this script does:
      so the same photo can never end up in both train and test.
   4. Cleans class names ("Alluvial soil", "Black Soil" -> "alluvial", "black").
   5. Makes a fresh, stratified train / val / test split with a fixed seed.
-  6. COPIES the images into data/soil_split/ (the original data is never touched)
-     and writes a manifest.csv listing every image and its split.
+  6. Writes the images into data/soil_split/ as RGB JPEGs (the original data is
+     never touched) and a manifest.csv listing every image and its split.
 
 Usage:
   python scripts/prepare_soil_data.py
@@ -109,16 +109,27 @@ def split_records(records, val_size, test_size, seed):
     return {"train": train, "val": val, "test": test}
 
 
+def save_as_jpeg(src: Path, out_path: Path):
+    """
+    Save every image as an RGB JPEG. The raw data mixes .jpg, .jpeg, .png, .webp
+    and .gif, and PyTorch's ImageFolder silently SKIPS .gif files. Converting
+    everything to one format means no image is lost and the model always gets
+    3-channel RGB input (PNG/WebP can have a 4th transparency channel).
+    """
+    with Image.open(src) as img:
+        img.convert("RGB").save(out_path, format="JPEG", quality=95)
+
+
 def copy_split(splits, dst: Path):
-    """Copy images to dst/<split>/<label>/<hash>.<ext> and write manifest.csv."""
+    """Write images to dst/<split>/<label>/<hash>.jpg and a manifest.csv."""
     rows = []
     for split_name, items in splits.items():
         for r in items:
             out_dir = dst / split_name / r["label"]
             out_dir.mkdir(parents=True, exist_ok=True)
             # Name by hash: unique (duplicates are gone) and no filename clashes.
-            out_path = out_dir / f"{r['hash'][:16]}{r['path'].suffix.lower()}"
-            shutil.copy2(r["path"], out_path)
+            out_path = out_dir / f"{r['hash'][:16]}.jpg"
+            save_as_jpeg(r["path"], out_path)
             rows.append({
                 "file": out_path.relative_to(dst).as_posix(),
                 "label": r["label"],
