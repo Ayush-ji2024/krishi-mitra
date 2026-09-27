@@ -1,0 +1,4 @@
+model,cv_f1_mean,cv_f1_std
+logistic_regression,0.9678,0.0068
+random_forest,0.9937,0.0056
+mlp,0.9799,0.007

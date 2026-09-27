@@ -1,212 +1,221 @@
-import os
+"""
+Train the crop recommendation model on the Kaggle Crop Recommendation dataset.
+
+Dataset : https://www.kaggle.com/datasets/atharvaingle/crop-recommendation-dataset
+          data/Crop_recommendation.csv  (N, P, K, temperature, humidity, ph, rainfall, label)
+
+What this script does:
+  1. Loads and validates the CSV (columns, missing values, duplicate rows).
+  2. Splits it once into train (80%) and test (20%), stratified by crop.
+  3. Compares three models with 5-fold cross-validation on the TRAIN part only:
+       - Logistic Regression (simple baseline)
+       - Random Forest
+       - MLP (a small neural network, like the original project used)
+  4. Retrains the best model on the full train part and evaluates it ONCE on test.
+  5. Saves one file with everything the app needs: models/crop_recommender.joblib
+     (the scaler lives INSIDE the pipeline, so it can never get out of sync).
+  6. Writes reports to reports/crop/.
+
+Usage:
+  python scripts/train_crop_recommender.py
+"""
+
 import argparse
-import pandas as pd
+import json
+from pathlib import Path
+
+import joblib
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import numpy as np
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.utils.data import DataLoader, Dataset
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.metrics import classification_report, accuracy_score
-from joblib import dump
+import pandas as pd
+import sklearn
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.inspection import permutation_importance
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import (ConfusionMatrixDisplay, accuracy_score,
+                             classification_report, confusion_matrix, f1_score,
+                             top_k_accuracy_score)
+from sklearn.model_selection import StratifiedKFold, cross_val_score, train_test_split
+from sklearn.neural_network import MLPClassifier
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 
-# --- Data Augmentation ---
-def augment_data(raw_data_path, output_path):
+FEATURES = ["N", "P", "K", "temperature", "humidity", "ph", "rainfall"]
+TARGET = "label"
+
+
+# ----------------------------------------------------------------------------- data
+def load_data(path: Path) -> pd.DataFrame:
+    if not path.exists():
+        raise SystemExit(f"Dataset not found: {path}")
+    df = pd.read_csv(path)
+
+    missing_cols = [c for c in FEATURES + [TARGET] if c not in df.columns]
+    if missing_cols:
+        raise SystemExit(f"CSV is missing columns: {missing_cols}")
+    df = df[FEATURES + [TARGET]]
+
+    n_missing = int(df.isna().any(axis=1).sum())
+    n_dupes = int(df.duplicated().sum())
+    df = df.dropna().drop_duplicates().reset_index(drop=True)
+
+    print(f"Rows after cleaning   : {len(df)}  (dropped {n_missing} with missing values, "
+          f"{n_dupes} exact duplicates)")
+    counts = df[TARGET].value_counts()
+    print(f"Crops                 : {df[TARGET].nunique()}  "
+          f"(rows per crop: min {counts.min()}, max {counts.max()})")
+    return df
+
+
+def build_candidates(seed: int):
     """
-    Loads a raw crop dataset, generates synthetic data based on predefined
-    crop settings, and saves the augmented dataset.
+    Each model is a Pipeline: preprocessing + classifier in ONE object.
+    Scaling matters for Logistic Regression and MLP (they compare distances /
+    use gradients); Random Forest splits on thresholds, so it doesn't need it.
     """
-    if not os.path.exists(raw_data_path):
-        raise FileNotFoundError(f"Raw data file not found at: {raw_data_path}")
-
-    df = pd.read_csv(raw_data_path)
-
-    # These settings were in the original script for augmenting the dataset
-    crop_settings = {
-        'wheat': {'temp': (18, 25), 'rain': (500, 750), 'humid': (60, 85), 'ph': (6.0, 7.5), 'N': (100, 150), 'P': (40, 60), 'K': (40, 60), 'soil_preference': [0, 3]},
-        'sugarcane': {'temp': (25, 35), 'rain': (1000, 1500), 'humid': (70, 90), 'ph': (6.0, 7.5), 'N': (150, 250), 'P': (50, 80), 'K': (80, 120), 'soil_preference': [0, 3]},
-        'potato': {'temp': (18, 25), 'rain': (500, 700), 'humid': (65, 85), 'ph': (5.0, 6.0), 'N': (100, 150), 'P': (60, 90), 'K': (120, 180), 'soil_preference': [0, 1, 3]},
-        'litchi': {'temp': (24, 32), 'rain': (1200, 1500), 'humid': (75, 95), 'ph': (5.5, 6.5), 'N': (70, 120), 'P': (30, 50), 'K': (50, 80), 'soil_preference': [0, 3]},
-        'makhana': {'temp': (25, 35), 'rain': (1200, 2000), 'humid': (80, 100), 'ph': (6.0, 7.5), 'N': (50, 100), 'P': (25, 45), 'K': (35, 60), 'soil_preference': [0, 2]},
-        'tomato': {'temp': (20, 30), 'rain': (600, 900), 'humid': (60, 85), 'ph': (6.0, 7.0), 'N': (80, 150), 'P': (50, 90), 'K': (80, 150), 'soil_preference': [0, 3]},
-        'onion': {'temp': (20, 30), 'rain': (600, 800), 'humid': (60, 80), 'ph': (6.0, 7.0), 'N': (80, 120), 'P': (40, 60), 'K': (80, 100), 'soil_preference': [0, 1, 3]}
+    return {
+        "logistic_regression": Pipeline([
+            ("scale", StandardScaler()),
+            ("clf", LogisticRegression(max_iter=5000)),
+        ]),
+        "random_forest": Pipeline([
+            ("clf", RandomForestClassifier(n_estimators=300, random_state=seed, n_jobs=-1)),
+        ]),
+        "mlp": Pipeline([
+            ("scale", StandardScaler()),
+            # early_stopping is left off on purpose: in some scikit-learn versions it
+            # crashes when the labels are text ("rice", "maize"...).
+            ("clf", MLPClassifier(hidden_layer_sizes=(64, 32), max_iter=2000,
+                                  random_state=seed)),
+        ]),
     }
 
-    augmented = []
-    for crop, params in crop_settings.items():
-        for _ in range(100):
-            soil_type = np.random.choice(params['soil_preference'])
-            soil_vector = [1 if i == soil_type else 0 for i in range(4)]
-            augmented.append([
-                np.random.uniform(*params['N']), np.random.uniform(*params['P']), np.random.uniform(*params['K']),
-                np.random.uniform(*params['temp']), np.random.uniform(*params['humid']), np.random.uniform(*params['ph']),
-                np.random.uniform(*params['rain']), crop, *soil_vector
-            ])
 
-    aug_df = pd.DataFrame(augmented, columns=['N', 'P', 'K', 'temperature', 'humidity', 'ph', 'rainfall', 'label', 'soil_0', 'soil_1', 'soil_2', 'soil_3'])
+# ----------------------------------------------------------------------------- reports
+def save_reports(report_dir: Path, cv_rows, best_name, pipe, X_test, y_test, seed, extra):
+    report_dir.mkdir(parents=True, exist_ok=True)
+    classes = list(pipe.classes_)
+    y_pred = pipe.predict(X_test)
+    proba = pipe.predict_proba(X_test)
 
-    # Ensure original dataframe has the soil columns to allow concatenation
-    for col in ['soil_0', 'soil_1', 'soil_2', 'soil_3']:
-        if col not in df.columns:
-            df[col] = 0
+    acc = accuracy_score(y_test, y_pred)
+    f1 = f1_score(y_test, y_pred, average="macro")
+    # The app shows the top 3 crops, so "is the right crop in the top 3?" matters too.
+    top3 = top_k_accuracy_score(y_test, proba, k=3, labels=classes)
 
-    df_aug = pd.concat([df, aug_df], ignore_index=True)
-    df_aug.to_csv(output_path, index=False)
-    print(f"Augmented data saved to {output_path} with shape {df_aug.shape}")
-    return output_path
+    pd.DataFrame(cv_rows).to_csv(report_dir / "cv_results.csv", index=False)
 
-# --- Data Preparation ---
-def prepare_data(augmented_csv_path):
-    """Loads and preprocesses the augmented data for training."""
-    df = pd.read_csv(augmented_csv_path)
+    report = classification_report(y_test, y_pred, output_dict=True, zero_division=0)
+    metrics = {
+        "model": best_name,
+        "test_accuracy": round(acc, 4),
+        "test_macro_f1": round(f1, 4),
+        "test_top3_accuracy": round(top3, 4),
+        "cv_results": cv_rows,
+        "per_class": report,
+        **extra,
+    }
+    with open(report_dir / "metrics.json", "w") as f:
+        json.dump(metrics, f, indent=2)
 
-    le = LabelEncoder()
-    df['label'] = le.fit_transform(df['label'])
+    # Confusion matrix (22 x 22)
+    cm = confusion_matrix(y_test, y_pred, labels=classes)
+    fig, ax = plt.subplots(figsize=(11, 11))
+    ConfusionMatrixDisplay(cm, display_labels=classes).plot(
+        ax=ax, cmap="Greens", colorbar=False, xticks_rotation=90)
+    ax.set_title(f"Crop recommender ({best_name}) - test set\n"
+                 f"accuracy {acc:.1%}, macro-F1 {f1:.3f}, top-3 {top3:.1%}")
+    fig.tight_layout()
+    fig.savefig(report_dir / "confusion_matrix.png", dpi=130)
+    plt.close(fig)
 
-    # Assuming first 7 cols are numeric, rest are one-hot encoded soil types
-    X = df.drop('label', axis=1).values
-    y = df['label'].values
+    # Which inputs matter most? Permutation importance: shuffle one column at a
+    # time and see how much the score drops. Works for any model.
+    imp = permutation_importance(pipe, X_test, y_test, n_repeats=10,
+                                 random_state=seed, scoring="f1_macro")
+    order = np.argsort(imp.importances_mean)
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.barh(np.array(FEATURES)[order], imp.importances_mean[order],
+            xerr=imp.importances_std[order], color="#3a7d44")
+    ax.set_xlabel("drop in macro-F1 when the feature is shuffled")
+    ax.set_title("Feature importance (permutation, test set)")
+    fig.tight_layout()
+    fig.savefig(report_dir / "feature_importance.png", dpi=150)
+    plt.close(fig)
 
-    scaler = StandardScaler()
-    X_num = scaler.fit_transform(X[:, :7])
-    X_cat = X[:, 7:]
-    X_final = np.concatenate([X_num, X_cat], axis=1).astype(np.float32)
+    print("\n========== TEST SET RESULTS ==========")
+    print(f"Model           : {best_name}")
+    print(f"Accuracy        : {acc:.3f}")
+    print(f"Macro-F1        : {f1:.3f}")
+    print(f"Top-3 accuracy  : {top3:.3f}")
+    wrong = [(t, p) for t, p in zip(y_test, y_pred) if t != p]
+    print(f"Mistakes        : {len(wrong)} of {len(y_test)}")
+    for t, p in wrong:
+        print(f"    true {t:<12} -> predicted {p}")
+    print("\nFeature importance (drop in macro-F1 when shuffled):")
+    for i in order[::-1]:
+        print(f"    {FEATURES[i]:<12} {imp.importances_mean[i]:.3f}")
+    print("======================================")
 
-    X_train, X_test, y_train, y_test = train_test_split(X_final, y, test_size=0.2, random_state=42)
 
-    return X_train, X_test, y_train, y_test, scaler, le
-
-# --- PyTorch Dataset ---
-class CropDataset(Dataset):
-    def __init__(self, X, y):
-        self.X = torch.tensor(X, dtype=torch.float32)
-        self.y = torch.tensor(y, dtype=torch.long)
-    def __len__(self):
-        return len(self.X)
-    def __getitem__(self, idx):
-        return self.X[idx], self.y[idx]
-
-# --- Model Definition ---
-class CropNN(nn.Module):
-    def __init__(self, input_size, num_classes):
-        super(CropNN, self).__init__()
-        self.fc1 = nn.Linear(input_size, 64)
-        self.bn1 = nn.BatchNorm1d(64)
-        self.fc2 = nn.Linear(64, 32)
-        self.bn2 = nn.BatchNorm1d(32)
-        self.dropout = nn.Dropout(0.5)
-        self.out = nn.Linear(32, num_classes)
-
-    def forward(self, x):
-        x = F.relu(self.bn1(self.fc1(x)))
-        x = F.relu(self.bn2(self.fc2(x)))
-        x = self.dropout(x)
-        return self.out(x)
-
-# --- Training Loop ---
-def train_model(model, train_loader, test_loader, criterion, optimizer, device, epochs, patience):
-    """Handles the model training loop with early stopping."""
-    best_val_acc = 0
-    counter = 0
-    best_model_state = None
-
-    for epoch in range(epochs):
-        model.train()
-        # Training phase
-        for features, labels in train_loader:
-            features, labels = features.to(device), labels.to(device)
-            optimizer.zero_grad()
-            outputs = model(features)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
-
-        # Validation phase
-        model.eval()
-        correct_val, total_val = 0, 0
-        with torch.no_grad():
-            for features, labels in test_loader:
-                features, labels = features.to(device), labels.to(device)
-                outputs = model(features)
-                _, predicted = torch.max(outputs, 1)
-                total_val += labels.size(0)
-                correct_val += (predicted == labels).sum().item()
-
-        val_acc = 100 * correct_val / total_val
-        print(f"Epoch [{epoch+1}/{epochs}], Val Acc: {val_acc:.2f}%")
-
-        if val_acc > best_val_acc:
-            best_val_acc = val_acc
-            best_model_state = model.state_dict()
-            counter = 0
-        else:
-            counter += 1
-            if counter >= patience:
-                print(f"Early stopping triggered. Best Val Acc: {best_val_acc:.2f}%")
-                break
-
-    model.load_state_dict(best_model_state)
-    return model
-
-# --- Main Execution Block ---
+# ----------------------------------------------------------------------------- main
 def main():
-    parser = argparse.ArgumentParser(description="Train a Crop Recommendation NN.")
-    parser.add_argument('--raw_data_path', type=str, required=True, help='Path to the raw crop data CSV file (e.g., new_agri.csv).')
-    parser.add_argument('--output_dir', type=str, default='models/', help='Directory to save the trained model and artifacts.')
-    parser.add_argument('--epochs', type=int, default=30, help='Number of training epochs.')
-    parser.add_argument('--lr', type=float, default=0.001, help='Learning rate.')
-    parser.add_argument('--batch_size', type=int, default=32, help='Batch size.')
-    parser.add_argument('--patience', type=int, default=5, help='Patience for early stopping.')
-
+    parser = argparse.ArgumentParser(description="Train the crop recommendation model.")
+    parser.add_argument("--data_path", default="data/Crop_recommendation.csv")
+    parser.add_argument("--model_out", default="models/crop_recommender.joblib")
+    parser.add_argument("--report_dir", default="reports/crop")
+    parser.add_argument("--test_size", type=float, default=0.2)
+    parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
+    df = load_data(Path(args.data_path))
+    X, y = df[FEATURES], df[TARGET]
 
-    # 1. Augment data
-    augmented_data_path = os.path.join(os.path.dirname(args.output_dir), 'data', 'augmented_crops.csv')
-    os.makedirs(os.path.dirname(augmented_data_path), exist_ok=True)
-    augment_data(args.raw_data_path, augmented_data_path)
+    # Split ONCE. The test part is not touched until the very end.
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=args.test_size, stratify=y, random_state=args.seed)
+    print(f"Train rows: {len(X_train)} | Test rows: {len(X_test)}")
 
-    # 2. Prepare data
-    X_train, X_test, y_train, y_test, scaler, le = prepare_data(augmented_data_path)
-    train_dataset = CropDataset(X_train, y_train)
-    test_dataset = CropDataset(X_test, y_test)
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=args.batch_size)
+    # Compare models with 5-fold cross-validation on the train part:
+    # train is cut into 5 pieces; each piece takes a turn as the validation set.
+    # 5 scores per model -> the mean says how good it is, the std how stable.
+    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=args.seed)
+    cv_rows = []
+    print("\n5-fold cross-validation on train (macro-F1):")
+    for name, pipe in build_candidates(args.seed).items():
+        scores = cross_val_score(pipe, X_train, y_train, cv=cv, scoring="f1_macro", n_jobs=1)
+        cv_rows.append({"model": name, "cv_f1_mean": round(scores.mean(), 4),
+                        "cv_f1_std": round(scores.std(), 4)})
+        print(f"    {name:<20} {scores.mean():.4f} +/- {scores.std():.4f}")
 
-    # 3. Initialize and train model
-    input_size = X_train.shape[1]
-    num_classes = len(le.classes_)
-    model = CropNN(input_size=input_size, num_classes=num_classes).to(device)
-    criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-4)
+    best = max(cv_rows, key=lambda r: r["cv_f1_mean"])
+    best_name = best["model"]
+    print(f"\nBest model by cross-validation: {best_name}")
 
-    print("\nStarting training...")
-    model = train_model(model, train_loader, test_loader, criterion, optimizer, device, args.epochs, args.patience)
+    # Retrain the winner on ALL train rows, then test once.
+    pipe = build_candidates(args.seed)[best_name]
+    pipe.fit(X_train, y_train)
 
-    # 4. Final evaluation
-    model.eval()
-    all_preds, all_labels = [], []
-    with torch.no_grad():
-        for features, labels in test_loader:
-            features = features.to(device)
-            outputs = model(features)
-            _, predicted = torch.max(outputs, 1)
-            all_preds.extend(predicted.cpu().numpy())
-            all_labels.extend(labels.numpy())
+    out = Path(args.model_out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    # Save the pipeline plus the info the app needs to validate user input.
+    joblib.dump({
+        "pipeline": pipe,
+        "model_name": best_name,
+        "features": FEATURES,
+        "classes": list(pipe.classes_),
+        "feature_ranges": {f: [float(X_train[f].min()), float(X_train[f].max())] for f in FEATURES},
+        "sklearn_version": sklearn.__version__,
+    }, out)
+    print(f"Model saved to {out}")
 
-    print("\n--- Final Evaluation ---")
-    print(f"Accuracy: {accuracy_score(all_labels, all_preds) * 100:.2f}%")
-    print(classification_report(all_labels, all_preds, target_names=le.classes_))
+    save_reports(Path(args.report_dir), cv_rows, best_name, pipe, X_test, y_test, args.seed, {
+        "train_rows": len(X_train), "test_rows": len(X_test), "seed": args.seed,
+    })
+    print(f"Reports saved to {args.report_dir}/")
 
-    # 5. Save artifacts
-    os.makedirs(args.output_dir, exist_ok=True)
-    torch.save(model.state_dict(), os.path.join(args.output_dir, 'crop_recommender.pth'))
-    dump(scaler, os.path.join(args.output_dir, 'scaler.joblib'))
-    dump(le, os.path.join(args.output_dir, 'label_encoder.joblib'))
-    print(f"\nModel and artifacts saved to {args.output_dir}")
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
