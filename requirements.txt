@@ -17,3 +17,4 @@ matplotlib==3.10.9
 fastapi==0.141.1
 uvicorn[standard]==0.54.0
 python-multipart==0.0.32
+httpx==0.28.1

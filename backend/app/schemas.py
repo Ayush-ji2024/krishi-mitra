@@ -50,3 +50,27 @@ class SoilResponse(BaseModel):
     confidence: float
     probabilities: dict[str, float]
     low_confidence: bool
+
+
+class Place(BaseModel):
+    name: str
+    state: Optional[str] = None
+    district: Optional[str] = None
+    country: Optional[str] = None
+    latitude: float
+    longitude: float
+
+
+class WeatherPeriod(BaseModel):
+    days: int
+    start: str
+    end: str
+
+
+class WeatherResponse(BaseModel):
+    temperature: float = Field(..., description="Mean temperature (deg C)")
+    humidity: float = Field(..., description="Mean relative humidity (%)")
+    rainfall: float = Field(..., description="Total rainfall over the period (mm) - an estimate")
+    period: WeatherPeriod
+    source: str
+    note: str

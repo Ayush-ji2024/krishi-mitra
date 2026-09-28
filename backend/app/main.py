@@ -12,11 +12,12 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image, UnidentifiedImageError
 
-from .schemas import CropRequest, CropResponse, SoilResponse
+from . import weather
+from .schemas import CropRequest, CropResponse, Place, SoilResponse, WeatherResponse
 
 logger = logging.getLogger("krishi-mitra")
 
@@ -126,3 +127,25 @@ def recommend_crop(body: CropRequest, request: Request):
         "warnings": crop.out_of_range_warnings(values),
         "model": crop.model_name,
     }
+
+
+@app.get("/places", response_model=list[Place])
+async def places(q: str = Query(..., min_length=2, max_length=100, description="Village / town / city name")):
+    """Find a place in India by name, to get its coordinates."""
+    try:
+        return await weather.search_places(q)
+    except weather.WeatherError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@app.get("/weather", response_model=WeatherResponse)
+async def recent_weather(
+    lat: float = Query(..., ge=-90, le=90, description="Latitude"),
+    lon: float = Query(..., ge=-180, le=180, description="Longitude"),
+):
+    """Last 30 days of weather for a location, ready to fill the crop form."""
+    try:
+        return await weather.recent_weather(lat, lon)
+    except weather.WeatherError as e:
+        # 502 Bad Gateway = "a service I depend on failed", not the user's fault.
+        raise HTTPException(status_code=502, detail=str(e))
