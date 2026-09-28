@@ -1,106 +1,268 @@
-# 🌾 Krishi Mitra – AI-Based Agriculture Assistant
+<div align="center">
 
-**Krishi Mitra** is an AI-powered smart agriculture system to assist Indian farmers in making data-driven decisions regarding crop selection. It uses a combination of a Convolutional Neural Network (CNN) for soil image classification and a Feed-forward Neural Network (FNN) for crop recommendation based on environmental factors.
+# 🌾 Krishi Mitra — कृषि मित्र
 
-This project was originally developed during a short-term internship at **CDAC Patna** and has been refactored for clarity, maintainability, and ease of use.
+**A farmer-first crop advisor: soil type from a photo, live local weather, and crop suggestions that respect your soil — in Hindi and English.**
+
+![Python](https://img.shields.io/badge/Python-3.10-3776AB?logo=python&logoColor=white)
+![PyTorch](https://img.shields.io/badge/PyTorch-MobileNetV2-EE4C2C?logo=pytorch&logoColor=white)
+![scikit-learn](https://img.shields.io/badge/scikit--learn-Random%20Forest-F7931E?logo=scikitlearn&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-backend-009688?logo=fastapi&logoColor=white)
+![React](https://img.shields.io/badge/React-Vite-61DAFB?logo=react&logoColor=black)
+![Tests](https://img.shields.io/badge/tests-21%20passing-2b7d45)
+
+<!-- Live demo: add the link here after deployment -->
+
+<img src="docs/screenshots/home.png" alt="Krishi Mitra home page" width="880">
+
+</div>
 
 ---
 
-## 📂 Project Structure
+## Contents
 
-The repository is now organized into a clean and professional structure:
+- [What it does](#what-it-does)
+- [Screenshots](#screenshots)
+- [Highlights](#highlights)
+- [How it works](#how-it-works)
+- [Data audit: what was wrong with the original data](#data-audit-what-was-wrong-with-the-original-data)
+- [Models and results](#models-and-results)
+- [Project structure](#project-structure)
+- [Run it locally](#run-it-locally)
+- [API](#api)
+- [Limitations and future work](#limitations-and-future-work)
+- [Credits](#credits)
+
+---
+
+## What it does
+
+A farmer answers three simple questions, one screen at a time:
+
+1. **Your soil** — upload a photo and a CNN suggests the soil type (alluvial, black, clay or red), or simply pick it.
+2. **Where is your farm?** — type a village or town; the last 30 days of temperature, humidity and rainfall are filled in automatically.
+3. **Your soil test** — enter N, P, K and pH from the Soil Health Card.
+
+Krishi Mitra then shows the best-fitting crops, how strongly each one matches, and whether it suits **that** soil type — in plain words, never as a misleading percentage.
+
+## Screenshots
+
+| Soil from a photo | Weather from a village name |
+|---|---|
+| <img src="docs/screenshots/advisor-soil.png" alt="Soil step with model confidence bars" width="430"> | <img src="docs/screenshots/advisor-weather.png" alt="Weather step auto-filled for Begusarai" width="430"> |
+
+| Crop plan (English) | Crop plan (Hindi) |
+|---|---|
+| <img src="docs/screenshots/advisor-results.png" alt="Results in English" width="430"> | <img src="docs/screenshots/advisor-results-hindi.png" alt="Results in Hindi" width="430"> |
+
+<p align="center">
+  <img src="docs/screenshots/mobile-home.png" alt="Mobile home page" width="240">
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/mobile-results.png" alt="Mobile results page" width="240">
+</p>
+
+## Highlights
+
+- 🔍 **Found and fixed a broken dataset.** 57% of the soil images were exact duplicates, and **every single test image (341/341) also appeared in the training set** — the original accuracy was memorisation. Rebuilt a leakage-free, stratified split.
+- 🧠 **Soil classifier: 91.1% test accuracy, 0.91 macro-F1** with MobileNetV2 transfer learning (two-phase fine-tuning, class-weighted loss, augmentation), trained on a CPU in ~12 minutes.
+- 🌱 **Crop recommender: 99.3% test accuracy, 100% top-3 accuracy**, chosen by benchmarking Logistic Regression, an MLP and Random Forest with 5-fold stratified cross-validation.
+- 🧭 **Soil-aware ranking** using the FAO ECOCROP crop database, so a crop that does not suit the farmer's soil is moved down — without hiding what the model thinks.
+- 🌦️ **Weather auto-fill** from Open-Meteo (no API key), with geocoding for Indian villages and towns.
+- 🛡️ **Honest by design:** out-of-range inputs trigger warnings, low-confidence soil predictions are flagged, near-zero suggestions are hidden, and the UI never presents a ranking score as a probability.
+- ✅ **21 automated tests** (API, ranking maths, mocked weather service); FastAPI validates every input.
+- 📱 **Mobile-first React UI**: step-by-step wizard, sticky thumb-reachable actions, Hindi/English switch, no extra UI libraries.
+
+## How it works
+
+```mermaid
+flowchart LR
+    U["Farmer<br/>(React, Hindi / English)"] -->|soil photo| S["/predict-soil<br/>MobileNetV2"]
+    S -->|soil type| U
+    U -->|village name| P["/places + /weather"]
+    P <-->|geocoding + last 30 days| OM[("Open-Meteo")]
+    P -->|weather values| U
+    U -->|N, P, K, pH + weather + soil type| R["/recommend-crop"]
+    R --> RF["Random Forest<br/>probability per crop"]
+    RF --> FAO["FAO ECOCROP<br/>soil suitability"]
+    FAO -->|"score = probability × soil weight"| U
+```
+
+**Soil-aware re-ranking.** The Kaggle crop dataset has no soil column, so soil type is added with an external, citable source: the [FAO ECOCROP](https://gaez.fao.org/pages/ecocrop) database lists the soil textures each crop grows in. Each soil class is mapped to a texture (black and clay → heavy, alluvial → medium, red → light), and every crop gets a rating per soil — `good` (optimal texture), `possible` (tolerated) or `poor`. The final ranking is
+
+```
+score = model probability × soil weight      (good 1.0 · possible 0.7 · poor 0.4)
+```
+
+This is a *soft* re-ranking: if the model is very confident, a "possible" soil does not overturn it; soil decides between crops the model finds similar. The table is generated reproducibly by [`scripts/build_soil_suitability.py`](scripts/build_soil_suitability.py) and sanity-checks against known agronomy (cotton is "good" on black soil, coffee "poor" on heavy soils).
+
+**Weather.** The API geocodes the place name and fetches daily data for the last 30 days: mean temperature, mean humidity and total rainfall. If exactly one place matches, it is picked automatically; if several do (e.g. *Rampur* exists in many states), the farmer chooses.
+
+## Data audit: what was wrong with the original data
+
+This project started as a team prototype at C-DAC Patna. Before retraining anything, the data and code were audited ([`scripts/prepare_soil_data.py`](scripts/prepare_soil_data.py)):
+
+| Finding | Evidence | Fix |
+|---|---|---|
+| Exact duplicate images | **887 of 1,563** images (57%) were byte-identical copies, e.g. `images386.jpg` and `Copy of images386.jpg` | MD5-hash de-duplication → **672 unique images** |
+| Train–test leakage | **341 of 341** original test images were also in the training set | New stratified **70 / 15 / 15** split (470 / 101 / 101), fixed seed |
+| Conflicting labels | The same image was labelled both *alluvial* and *black* | All copies of conflicting images dropped |
+| Class imbalance | Alluvial had ~2.5× more images than clay | Class-weighted loss + macro-F1 for model selection |
+| Mixed / unreadable formats | A `.gif` silently skipped by PyTorch's `ImageFolder`, a stray `.DS_Store` | Every image re-saved as RGB JPEG; non-images skipped |
+| Synthetic crop rows | 700 randomly generated rows for 7 extra crops | Removed — only the real dataset is used |
+
+Bugs fixed in the original code: soil classes of the image model and crop model did not match (`clay` vs `laterite`); the app's model sizes (22 classes, 15 inputs) could not load the trained model (29 classes, 11 inputs); the "best" model checkpoint was a reference to the live weights, so the last epoch was saved instead of the best one (fixed with `copy.deepcopy`); the crop model used its test set for early stopping.
+
+## Models and results
+
+All numbers are on held-out test data that was used exactly once, after model selection on validation data.
+
+### Soil classifier — MobileNetV2 (transfer learning)
+
+Two phases: train only the new classification head (5 epochs), then fine-tune the last 4 backbone blocks at a 10× lower learning rate with early stopping on validation macro-F1.
+
+| Soil | Precision | Recall | F1 | Test images |
+|---|---|---|---|---|
+| Alluvial | 0.947 | 0.857 | 0.900 | 42 |
+| Black | 0.810 | 0.895 | 0.850 | 19 |
+| Clay | 0.850 | 1.000 | 0.919 | 17 |
+| Red | 1.000 | 0.957 | 0.978 | 23 |
+| **Overall** | | | **accuracy 0.911 · macro-F1 0.912** | **101** |
+
+Most errors are alluvial soil predicted as black or clay — alluvial soil varies from light brown to dark, overlapping with both. With only 101 test images, the accuracy has roughly ±6% uncertainty.
+
+<p>
+  <img src="reports/soil/confusion_matrix.png" alt="Soil classifier confusion matrix" width="360">
+  <img src="reports/soil/training_curves.png" alt="Soil classifier training curves" width="480">
+</p>
+
+### Crop recommender — model comparison
+
+| Model | 5-fold CV macro-F1 (train split) |
+|---|---|
+| Logistic Regression | 0.968 ± 0.007 |
+| MLP (small neural network, as in the original project) | 0.980 ± 0.007 |
+| **Random Forest** ✅ | **0.994 ± 0.006** |
+
+The winning Random Forest scored **99.3% accuracy, 0.993 macro-F1 and 100% top-3 accuracy** on 440 unseen rows (22 crops). Its three mistakes were agronomically close pairs: rice → jute, lentil → moth beans, black gram → maize. Permutation importance ranks humidity, nitrogen, rainfall and potassium highest.
+
+> The Kaggle dataset is known to be easy to separate — even Logistic Regression reaches ~97% — so these scores say more about the dataset than about real fields.
+
+<p>
+  <img src="reports/crop/feature_importance.png" alt="Crop model feature importance" width="480">
+</p>
+
+## Project structure
 
 ```
 krishi-mitra/
-│
-├── data/
-│   ├── (Your raw data should be placed here)
-│   └── augmented_crops.csv         # Auto-generated during training
-│
-├── models/
-│   ├── soil_classifier.pth         # Trained CNN model
-│   ├── crop_recommender.pth        # Trained FNN model
-│   ├── scaler.joblib               # StandardScaler for features
-│   └── label_encoder.joblib        # LabelEncoder for crop names
-│
+├── backend/
+│   ├── app/
+│   │   ├── main.py               # FastAPI app: endpoints, CORS, model loading
+│   │   ├── soil.py               # MobileNetV2 inference (same preprocessing as training)
+│   │   ├── crop.py               # Random Forest inference + soil re-ranking + range warnings
+│   │   ├── weather.py            # Open-Meteo geocoding and 30-day weather
+│   │   ├── schemas.py            # Pydantic request/response models and validation
+│   │   └── soil_suitability.json # generated from FAO ECOCROP
+│   └── tests/                    # 21 pytest tests (API, ranking, mocked weather)
+├── frontend/                     # React + Vite, mobile-first, Hindi/English
+│   └── src/
+│       ├── pages/                # Home, Advisor (4-step wizard), About
+│       ├── advisor/              # the wizard steps and their shared state
+│       ├── i18n/                 # English and Hindi strings
+│       └── styles/
 ├── scripts/
-│   ├── train_soil_classifier.py    # Script to train the soil image model
-│   └── train_crop_recommender.py   # Script to train the crop recommendation model
-│
-├── src/
-│   └── app.py                      # Main user-facing application
-│
-├── .gitignore
-├── README.md                       # This documentation
-└── requirements.txt                # Python dependencies
+│   ├── prepare_soil_data.py      # audit, de-duplicate and split the soil images
+│   ├── train_soil_classifier.py  # MobileNetV2 transfer learning + reports
+│   ├── train_crop_recommender.py # model comparison with CV + reports
+│   └── build_soil_suitability.py # FAO ECOCROP → soil_suitability.json
+├── reports/                      # metrics, confusion matrices, training curves
+├── docs/screenshots/
+├── requirements.txt              # runtime dependencies (pinned)
+└── requirements-dev.txt          # + pytest
 ```
 
----
+## Run it locally
 
-## 🚀 Getting Started
+Requires **Python 3.10** and a recent **Node.js LTS (22 or newer)**.
 
-Follow these steps to set up and run the project on your local machine.
+### 1. Backend setup
 
-### 1. Setup
-
-First, clone the repository to your local machine:
 ```bash
-git clone <repository_url>
-cd krishi-mitra
+python -m venv venv
+venv\Scripts\activate            # Windows  (macOS/Linux: source venv/bin/activate)
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+pip install -r requirements-dev.txt
 ```
 
-Next, install the required Python dependencies using the `requirements.txt` file:
+### 2. Data
+
+| Data | Where to put it |
+|---|---|
+| Soil images (4 classes: Alluvial, Black, Clay, Red — `Train/` and `test/` folders) | `data/soil_images/` |
+| [Crop Recommendation dataset (Kaggle)](https://www.kaggle.com/datasets/atharvaingle/crop-recommendation-dataset) | `data/Crop_recommendation.csv` |
+| FAO ECOCROP (only to rebuild the soil table) | `git clone --depth 1 https://github.com/OpenCLIM/ecocrop.git data/external/ecocrop` |
+
+`data/` and `models/` are git-ignored.
+
+### 3. Train the models
+
 ```bash
-pip install -r requirements.txt
+python scripts/prepare_soil_data.py          # audit + clean split → data/soil_split/
+python scripts/train_soil_classifier.py      # → models/soil_classifier.pt, reports/soil/
+python scripts/train_crop_recommender.py     # → models/crop_recommender.joblib, reports/crop/
+python scripts/build_soil_suitability.py     # optional: rebuild backend/app/soil_suitability.json
 ```
 
-### 2. Prepare the Datasets
+### 4. Run the API and the tests
 
-This project requires two datasets: one for soil image classification and one for crop recommendation. The original links are provided below.
-
-- **Soil Image Dataset:** [Access on Google Drive](https://drive.google.com/drive/folders/1K3FY6TzLudNfStd32DtfBby-IkpAoYBo?usp=sharing)
-- **Crop Data (new_agri.csv):** [Access on Google Drive](https://drive.google.com/file/d/1dDUNgzlXCpM7KiR6JkwPL1mZ7QU1eTCz/view?usp=sharing)
-
-**IMPORTANT:**
-1.  Download the **Soil Image Dataset**. Create a directory inside the `data/` folder (e.g., `data/soil_images`) and ensure it contains the `Train` and `test` subdirectories from the dataset.
-2.  Download the **Crop Data** and place the `new_agri.csv` file directly inside the `data/` folder.
-
-### 3. Usage
-
-The project workflow is split into two main parts: training the models and running the application.
-
-#### Training the Models
-
-You must train the models first. The trained models and artifacts will be saved in the `models/` directory.
-
-**A. Train the Soil Classifier:**
-Run the following command, pointing to the directory where you stored the soil images:
 ```bash
-python scripts/train_soil_classifier.py --data_dir data/soil_images/
+uvicorn backend.app.main:app --reload        # http://127.0.0.1:8000/docs
+python -m pytest backend/tests -v
 ```
 
-**B. Train the Crop Recommender:**
-Run the following command, pointing to the raw `new_agri.csv` file:
+### 5. Run the website
+
 ```bash
-python scripts/train_crop_recommender.py --raw_data_path data/new_agri.csv
+cd frontend
+npm install
+npm run dev                                  # http://localhost:5173
 ```
 
-#### Running the Application
+The frontend reads the backend address from `VITE_API_URL` (see `frontend/.env.example`); the backend allows browser calls from the origins in `ALLOWED_ORIGINS` (default `http://localhost:5173`).
 
-Once the models are trained and saved, you can run the main application:
+## API
+
+Interactive docs are generated by FastAPI at `/docs`.
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/health` | Whether both models loaded |
+| `GET` | `/meta` | Soil types, crops, training ranges and the soil suitability table |
+| `POST` | `/predict-soil` | Image upload (≤ 5 MB) → soil type, confidence, per-class probabilities, `low_confidence` flag |
+| `POST` | `/recommend-crop` | N, P, K, temperature, humidity, pH, rainfall, optional soil type → up to 3 crops with probability, soil suitability and warnings |
+| `GET` | `/places?q=` | Indian places matching a name (Open-Meteo geocoding) |
+| `GET` | `/weather?lat=&lon=` | Mean temperature, mean humidity and total rainfall over the last 30 days |
+
+Example:
+
 ```bash
-python src/app.py
+curl -X POST http://127.0.0.1:8000/recommend-crop \
+  -H "Content-Type: application/json" \
+  -d '{"N": 90, "P": 42, "K": 43, "temperature": 20.9, "humidity": 82, "ph": 6.5, "rainfall": 202.9, "soil_type": "alluvial"}'
 ```
-The application will guide you through a series of prompts to get a personalized crop recommendation.
 
----
+Impossible values (e.g. pH 20) are rejected with `422`; values outside the training range are accepted with a warning; a failing weather service returns `502`.
 
-### 🧰 Original Technologies Used
-- Python
-- PyTorch
-- NumPy, Pandas, Matplotlib
-- Scikit-learn
+## Limitations and future work
 
-### 🙏 Acknowledgement
-This project was developed during a short-term AI internship at CDAC Patna.
-> **Original Team:** Harshit Kashyap, Ayush Kumar, Pallavi Bharti, Sonu Kumar
+- **22 crops only.** Wheat, sugarcane, mustard and potato — major crops in Bihar — are not in the dataset. Adding them needs real data, not synthetic rows.
+- **4 soil types, internet photos.** The soil model has not been tested on photos taken in real fields; accuracy there is likely lower.
+- **Rainfall period is undocumented** in the crop dataset (its values of 20–300 mm are far below annual totals), so the 30-day total is an informed estimate that the farmer can edit.
+- **Soil suitability uses texture only** — not drainage, salinity or local varieties — and its weights (1.0 / 0.7 / 0.4) are chosen, not learned.
+- **Soil test values need a Soil Health Card.** Future work: estimate N-P-K ranges from district-level soil data when no card is available.
+
+## Credits
+
+- Original prototype built during an AI & Data Science internship at **C-DAC Patna** by Harshit Kashyap, Ayush Kumar, Pallavi Bharti and Sonu Kumar.
+- Data audit, retraining, backend, soil-aware ranking, weather integration and web app by **Ayush Kumar** — [GitHub](https://github.com/Ayush-ji2024) · [LinkedIn](https://www.linkedin.com/in/ayush-kumar-793733309).
+- Weather data by [Open-Meteo.com](https://open-meteo.com/) (CC BY 4.0) · Crop–soil data from [FAO ECOCROP](https://gaez.fao.org/pages/ecocrop), via [OpenCLIM/ecocrop](https://github.com/OpenCLIM/ecocrop) · Crop dataset: [Crop Recommendation Dataset](https://www.kaggle.com/datasets/atharvaingle/crop-recommendation-dataset) on Kaggle.
