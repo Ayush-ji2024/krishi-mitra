@@ -45,11 +45,29 @@ def test_recommend_rice_sample(client):
     assert r.status_code == 200
     body = r.json()
     crops = [x["crop"] for x in body["recommendations"]]
-    assert len(crops) == 3
-    assert "rice" in crops
-    probs = [x["probability"] for x in body["recommendations"]]
-    assert probs == sorted(probs, reverse=True)
+    assert 1 <= len(crops) <= 3        # near-zero crops are hidden
+    assert crops[0] == "rice"
+    assert all(x["probability"] >= 0.01 for x in body["recommendations"])
+    scores = [x["score"] for x in body["recommendations"]]
+    assert scores == sorted(scores, reverse=True)
+    # Without a soil type there is no re-ranking: score == probability.
+    for x in body["recommendations"]:
+        assert x["soil_suitability"] is None
+        assert x["score"] == x["probability"]
     assert body["warnings"] == []
+
+
+def test_recommend_with_soil_type(client):
+    r = client.post("/recommend-crop", json={**RICE_SAMPLE, "soil_type": "clay"})
+    assert r.status_code == 200
+    recs = r.json()["recommendations"]
+    assert all(x["soil_suitability"] in ("good", "possible", "poor") for x in recs)
+    assert recs[0]["crop"] == "rice"   # rice is 'good' on every soil in ECOCROP
+
+
+def test_unknown_soil_type_is_rejected(client):
+    r = client.post("/recommend-crop", json={**RICE_SAMPLE, "soil_type": "sandy"})
+    assert r.status_code == 422
 
 
 def test_out_of_training_range_gives_warning(client):

@@ -96,7 +96,8 @@ def meta(request: Request):
         "features": crop.features,
         "feature_ranges": crop.feature_ranges,
         "crops": crop.classes,
-        "soil_types": soil.class_names if soil else [],
+        "soil_types": soil.class_names if soil else crop.soil_types,
+        "soil_suitability": crop.suitability,
     }
 
 
@@ -121,7 +122,7 @@ def recommend_crop(body: CropRequest, request: Request):
     crop = _require(request, "crop")
     values = body.model_dump()
     return {
-        "recommendations": crop.recommend(values, top_k=3),
+        "recommendations": crop.recommend(values, soil_type=body.soil_type, top_k=3),
         "warnings": crop.out_of_range_warnings(values),
         "model": crop.model_name,
     }

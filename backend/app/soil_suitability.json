@@ -1,0 +1,362 @@
+{
+  "source": "FAO ECOCROP database (soil texture: TEXT = optimal, TEXTR = absolute), via https://github.com/OpenCLIM/ecocrop",
+  "method": "soil class -> texture class; 'good' if texture is optimal for the crop, 'possible' if only tolerated, else 'poor'. Texture only - drainage, salinity and local varieties are NOT considered.",
+  "soil_texture": {
+    "alluvial": "medium",
+    "black": "heavy",
+    "clay": "heavy",
+    "red": "light"
+  },
+  "ratings": {
+    "alluvial": {
+      "rice": "good",
+      "maize": "good",
+      "chickpea": "good",
+      "kidneybeans": "good",
+      "pigeonpeas": "good",
+      "mothbeans": "possible",
+      "mungbean": "good",
+      "blackgram": "good",
+      "lentil": "good",
+      "pomegranate": "good",
+      "banana": "good",
+      "mango": "good",
+      "grapes": "good",
+      "watermelon": "good",
+      "muskmelon": "good",
+      "apple": "good",
+      "orange": "good",
+      "papaya": "good",
+      "coconut": "good",
+      "cotton": "good",
+      "jute": "good",
+      "coffee": "good"
+    },
+    "black": {
+      "rice": "good",
+      "maize": "possible",
+      "chickpea": "good",
+      "kidneybeans": "possible",
+      "pigeonpeas": "possible",
+      "mothbeans": "possible",
+      "mungbean": "possible",
+      "blackgram": "good",
+      "lentil": "good",
+      "pomegranate": "good",
+      "banana": "possible",
+      "mango": "possible",
+      "grapes": "possible",
+      "watermelon": "poor",
+      "muskmelon": "possible",
+      "apple": "possible",
+      "orange": "possible",
+      "papaya": "possible",
+      "coconut": "possible",
+      "cotton": "good",
+      "jute": "good",
+      "coffee": "poor"
+    },
+    "clay": {
+      "rice": "good",
+      "maize": "possible",
+      "chickpea": "good",
+      "kidneybeans": "possible",
+      "pigeonpeas": "possible",
+      "mothbeans": "possible",
+      "mungbean": "possible",
+      "blackgram": "good",
+      "lentil": "good",
+      "pomegranate": "good",
+      "banana": "possible",
+      "mango": "possible",
+      "grapes": "possible",
+      "watermelon": "poor",
+      "muskmelon": "possible",
+      "apple": "possible",
+      "orange": "possible",
+      "papaya": "possible",
+      "coconut": "possible",
+      "cotton": "good",
+      "jute": "good",
+      "coffee": "poor"
+    },
+    "red": {
+      "rice": "good",
+      "maize": "possible",
+      "chickpea": "possible",
+      "kidneybeans": "possible",
+      "pigeonpeas": "good",
+      "mothbeans": "good",
+      "mungbean": "possible",
+      "blackgram": "poor",
+      "lentil": "possible",
+      "pomegranate": "possible",
+      "banana": "possible",
+      "mango": "good",
+      "grapes": "possible",
+      "watermelon": "possible",
+      "muskmelon": "possible",
+      "apple": "good",
+      "orange": "good",
+      "papaya": "possible",
+      "coconut": "good",
+      "cotton": "possible",
+      "jute": "possible",
+      "coffee": "possible"
+    }
+  },
+  "crop_textures": {
+    "rice": {
+      "species": "Oryza sativa",
+      "optimal": [
+        "heavy",
+        "light",
+        "medium"
+      ],
+      "absolute": [
+        "heavy",
+        "light",
+        "medium"
+      ]
+    },
+    "maize": {
+      "species": "Zea mays ssp. mays",
+      "optimal": [
+        "medium"
+      ],
+      "absolute": [
+        "heavy",
+        "light",
+        "medium"
+      ]
+    },
+    "chickpea": {
+      "species": "Cicer arietinum",
+      "optimal": [
+        "heavy",
+        "medium"
+      ],
+      "absolute": [
+        "heavy",
+        "light",
+        "medium"
+      ]
+    },
+    "kidneybeans": {
+      "species": "Phaseolus vulgaris",
+      "optimal": [
+        "medium"
+      ],
+      "absolute": [
+        "heavy",
+        "light",
+        "medium"
+      ]
+    },
+    "pigeonpeas": {
+      "species": "Cajanus cajan",
+      "optimal": [
+        "light",
+        "medium"
+      ],
+      "absolute": [
+        "heavy",
+        "light",
+        "medium"
+      ]
+    },
+    "mothbeans": {
+      "species": "Vigna aconitifolia",
+      "optimal": [
+        "light"
+      ],
+      "absolute": [
+        "heavy",
+        "light",
+        "medium"
+      ]
+    },
+    "mungbean": {
+      "species": "Vigna radiata",
+      "optimal": [
+        "medium"
+      ],
+      "absolute": [
+        "heavy",
+        "light",
+        "medium"
+      ]
+    },
+    "blackgram": {
+      "species": "Vigna mungo",
+      "optimal": [
+        "heavy",
+        "medium"
+      ],
+      "absolute": [
+        "heavy",
+        "medium"
+      ]
+    },
+    "lentil": {
+      "species": "Lens culinaris",
+      "optimal": [
+        "heavy",
+        "medium"
+      ],
+      "absolute": [
+        "heavy",
+        "light",
+        "medium"
+      ]
+    },
+    "pomegranate": {
+      "species": "Punica granatum",
+      "optimal": [
+        "heavy",
+        "medium"
+      ],
+      "absolute": [
+        "heavy",
+        "light",
+        "medium"
+      ]
+    },
+    "banana": {
+      "species": "Musa acuminata",
+      "optimal": [
+        "medium"
+      ],
+      "absolute": [
+        "heavy",
+        "light",
+        "medium"
+      ]
+    },
+    "mango": {
+      "species": "Mangifera indica",
+      "optimal": [
+        "light",
+        "medium"
+      ],
+      "absolute": [
+        "heavy",
+        "light",
+        "medium"
+      ]
+    },
+    "grapes": {
+      "species": "Vitis vinifera",
+      "optimal": [
+        "medium"
+      ],
+      "absolute": [
+        "heavy",
+        "light",
+        "medium"
+      ]
+    },
+    "watermelon": {
+      "species": "Citrullus lanatus",
+      "optimal": [
+        "medium"
+      ],
+      "absolute": [
+        "light",
+        "medium"
+      ]
+    },
+    "muskmelon": {
+      "species": "Cucumis melo",
+      "optimal": [
+        "medium"
+      ],
+      "absolute": [
+        "heavy",
+        "light",
+        "medium"
+      ]
+    },
+    "apple": {
+      "species": "Malus domestica",
+      "optimal": [
+        "light",
+        "medium"
+      ],
+      "absolute": [
+        "heavy",
+        "light",
+        "medium"
+      ]
+    },
+    "orange": {
+      "species": "Citrus sinensis",
+      "optimal": [
+        "light",
+        "medium"
+      ],
+      "absolute": [
+        "heavy",
+        "light",
+        "medium"
+      ]
+    },
+    "papaya": {
+      "species": "Carica papaya",
+      "optimal": [
+        "medium"
+      ],
+      "absolute": [
+        "heavy",
+        "light",
+        "medium"
+      ]
+    },
+    "coconut": {
+      "species": "Cocos nucifera",
+      "optimal": [
+        "light",
+        "medium"
+      ],
+      "absolute": [
+        "heavy",
+        "light",
+        "medium"
+      ]
+    },
+    "cotton": {
+      "species": "Gossypium hirsutum",
+      "optimal": [
+        "heavy",
+        "medium"
+      ],
+      "absolute": [
+        "heavy",
+        "light",
+        "medium"
+      ]
+    },
+    "jute": {
+      "species": "Corchorus capsularis",
+      "optimal": [
+        "heavy",
+        "medium"
+      ],
+      "absolute": [
+        "heavy",
+        "light",
+        "medium"
+      ]
+    },
+    "coffee": {
+      "species": "Coffea arabica",
+      "optimal": [
+        "medium"
+      ],
+      "absolute": [
+        "light",
+        "medium"
+      ]
+    }
+  }
+}
