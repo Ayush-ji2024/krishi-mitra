@@ -39,9 +39,18 @@ class CropSuggestion(BaseModel):
     score: float = Field(..., description="probability x soil weight; results are sorted by this")
 
 
+class InputWarning(BaseModel):
+    code: Literal["out_of_range"]
+    feature: str = Field(..., description="Input field, e.g. 'N' or 'rainfall'")
+    value: float
+    min: float = Field(..., description="Lowest value seen in training")
+    max: float = Field(..., description="Highest value seen in training")
+    message: str = Field(..., description="English text; the frontend translates from the fields")
+
+
 class CropResponse(BaseModel):
     recommendations: list[CropSuggestion]
-    warnings: list[str]
+    warnings: list[InputWarning]
     model: str
 
 

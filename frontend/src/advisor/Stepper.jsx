@@ -1,4 +1,4 @@
-import { useLang } from "../i18n/LangContext";
+import { useLang } from "../i18n/useLang";
 import { IconCheck } from "../components/Icons";
 
 // The progress bar at the top of the advisor: 1 Soil - 2 Weather - 3 Soil test - 4 Results.

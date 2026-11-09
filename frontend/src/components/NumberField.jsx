@@ -1,6 +1,6 @@
 // One labelled number input, with an optional icon, unit and hint.
 // The value stays a STRING while typing (so "6." or an empty box are allowed);
-// App.jsx converts it to a number on submit.
+// pages/Advisor.jsx converts it to a number on submit.
 export default function NumberField({ id, label, icon, unit, value, onChange, min, max, step = "any", hint }) {
   return (
     <div className="field">

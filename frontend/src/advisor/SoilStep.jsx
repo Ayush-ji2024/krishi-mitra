@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { api } from "../api";
 import { names, SOILS } from "../data";
-import { useLang } from "../i18n/LangContext";
+import { useLang } from "../i18n/useLang";
 import { IconCamera } from "../components/Icons";
 
 const MAX_BYTES = 5 * 1024 * 1024; // same limit as the backend

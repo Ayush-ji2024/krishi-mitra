@@ -1,4 +1,4 @@
-import { useLang } from "../i18n/LangContext";
+import { useLang } from "../i18n/useLang";
 import { CROPS, names, SOILS } from "../data";
 import {
   IconArrowRight, IconCamera, IconFlask, IconPin, IconRain, IconShield, IconSprout,

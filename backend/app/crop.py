@@ -37,20 +37,28 @@ class CropRecommender:
     def soil_types(self) -> list[str]:
         return sorted(self.suitability)
 
-    def out_of_range_warnings(self, values: dict) -> list[str]:
+    def out_of_range_warnings(self, values: dict) -> list[dict]:
         """
         The model has only seen values inside the training ranges. Outside them
         it still answers, but it is guessing - so we tell the user.
+
+        Each warning is structured (feature, value, min, max) so the frontend can
+        show it in the user's language; `message` is an English version for API users.
         """
         warnings = []
         for f in self.features:
             lo, hi = self.feature_ranges[f]
             v = values[f]
             if v < lo or v > hi:
-                warnings.append(
-                    f"{f}={v:g} is outside the training range ({lo:.1f}-{hi:.1f}); "
-                    "the recommendation may be unreliable."
-                )
+                warnings.append({
+                    "code": "out_of_range",
+                    "feature": f,
+                    "value": v,
+                    "min": round(float(lo), 1),
+                    "max": round(float(hi), 1),
+                    "message": (f"{f}={v:g} is outside the training range ({lo:.1f}-{hi:.1f}); "
+                                "the recommendation may be unreliable."),
+                })
         return warnings
 
     def recommend(self, values: dict, soil_type: str | None = None, top_k: int = 3) -> list[dict]:

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "./api";
 import { useHashRoute } from "./hooks/useHashRoute";
+import { useLang } from "./i18n/useLang";
 import { useAdvisor } from "./advisor/useAdvisor";
 import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
@@ -13,6 +14,7 @@ import "./styles/advisor.css";
 import "./styles/about.css";
 
 export default function App() {
+  const { t } = useLang();
   const path = useHashRoute();
   const advisor = useAdvisor();                   // kept here so it survives page changes
   const [meta, setMeta] = useState(null);         // soil types, crops, ranges from the backend
@@ -32,7 +34,7 @@ export default function App() {
     <div className="site">
       {/* Not a plain href="#main": with hash routing that would change the page. */}
       <button type="button" className="skip-link" onClick={() => document.getElementById("main")?.focus()}>
-        Skip to content
+        {t("nav.skip")}
       </button>
       <Navbar path={path} />
       <main id="main" tabIndex={-1}>{page}</main>

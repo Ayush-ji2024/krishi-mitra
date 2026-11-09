@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api } from "../api";
-import { useLang } from "../i18n/LangContext";
+import { useLang } from "../i18n/useLang";
 import NumberField from "../components/NumberField";
 import { IconDrop, IconPin, IconRain, IconSearch, IconThermo } from "../components/Icons";
 

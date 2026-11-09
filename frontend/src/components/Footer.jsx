@@ -1,4 +1,4 @@
-import { useLang } from "../i18n/LangContext";
+import { useLang } from "../i18n/useLang";
 import { IconGithub } from "./Icons";
 
 export const GITHUB_URL = "https://github.com/Ayush-ji2024/krishi-mitra";

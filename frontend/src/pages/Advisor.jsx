@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api } from "../api";
-import { useLang } from "../i18n/LangContext";
+import { useLang } from "../i18n/useLang";
 import { ALL_FIELDS, TEST_FIELDS, WEATHER_FIELDS } from "../advisor/useAdvisor";
 import Stepper from "../advisor/Stepper";
 import SoilStep from "../advisor/SoilStep";

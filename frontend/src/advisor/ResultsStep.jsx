@@ -1,4 +1,4 @@
-import { useLang } from "../i18n/LangContext";
+import { useLang } from "../i18n/useLang";
 import { cropInfo, names, SOILS } from "../data";
 import { IconAlert, IconPin, IconRefresh } from "../components/Icons";
 
@@ -18,6 +18,13 @@ export default function ResultsStep({ advisor, onEdit }) {
   if (!result) return null;
 
   const allWeak = result.recommendations.every((r) => r.probability < 0.3);
+  // Warnings come from the backend as data (feature, value, min, max), so we can
+  // show them in the chosen language. Unknown kinds fall back to the English text.
+  const fieldLabel = (f) => t(["temperature", "humidity", "rainfall"].includes(f) ? `weather.${f}` : `test.${f}`);
+  const warningText = (w) =>
+    w.code === "out_of_range"
+      ? t("res.warnRange", { field: fieldLabel(w.feature), value: w.value, min: w.min, max: w.max })
+      : w.message;
   const soilName = soilType ? names(SOILS[soilType], lang).main : t("res.notGiven");
 
   return (
@@ -65,7 +72,7 @@ export default function ResultsStep({ advisor, onEdit }) {
       {result.warnings.length > 0 && (
         <div className="notice warn">
           <IconAlert width={16} height={16} /> <b>{t("res.note")}</b>
-          <ul>{result.warnings.map((w) => <li key={w}>{w}</li>)}</ul>
+          <ul>{result.warnings.map((w) => <li key={w.feature ?? w.message}>{warningText(w)}</li>)}</ul>
         </div>
       )}
 

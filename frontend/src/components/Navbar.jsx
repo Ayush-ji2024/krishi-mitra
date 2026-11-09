@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useLang } from "../i18n/LangContext";
+import { useState } from "react";
+import { useLang } from "../i18n/useLang";
 import { IconClose, IconMenu } from "./Icons";
 
 const LINKS = [
@@ -10,10 +10,10 @@ const LINKS = [
 
 export default function Navbar({ path }) {
   const { t, lang, setLang } = useLang();
-  const [open, setOpen] = useState(false);
-
-  // Close the mobile menu whenever the page changes.
-  useEffect(() => setOpen(false), [path]);
+  // The menu remembers which page it was opened on, so it is closed
+  // automatically when the page changes (no effect + setState needed).
+  const [openOn, setOpenOn] = useState(null);
+  const open = openOn === path;
 
   return (
     <header className="navbar">
@@ -43,7 +43,7 @@ export default function Navbar({ path }) {
             className="menu-btn"
             aria-label={t("nav.menu")}
             aria-expanded={open}
-            onClick={() => setOpen((o) => !o)}
+            onClick={() => setOpenOn(open ? null : path)}
           >
             {open ? <IconClose /> : <IconMenu />}
           </button>

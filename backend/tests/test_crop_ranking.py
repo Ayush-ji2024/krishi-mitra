@@ -68,4 +68,7 @@ def test_at_least_one_result_is_always_returned():
 
 def test_out_of_range_warning():
     warnings = make_recommender().out_of_range_warnings({"N": 200})
-    assert len(warnings) == 1 and "N=200" in warnings[0]
+    assert len(warnings) == 1
+    w = warnings[0]
+    assert (w["feature"], w["value"]) == ("N", 200)
+    assert w["value"] > w["max"] and "N=200" in w["message"]

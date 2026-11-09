@@ -1,4 +1,4 @@
-import { useLang } from "../i18n/LangContext";
+import { useLang } from "../i18n/useLang";
 import { SAMPLE_SOIL_TEST } from "../data";
 import NumberField from "../components/NumberField";
 import { IconFlask } from "../components/Icons";

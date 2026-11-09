@@ -1,9 +1,9 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { STRINGS } from "./strings";
+import { LangContext } from "./useLang";
 
-// English / Hindi switch. Any component can call `const { t, lang } = useLang()`
+// English / Hindi switch. Components read it with useLang() (see ./useLang.js)
 // and write t("some.key") instead of hard-coded text.
-const LangContext = createContext(null);
 
 function savedLang() {
   try {
@@ -35,5 +35,3 @@ export function LangProvider({ children }) {
 
   return <LangContext.Provider value={{ lang, setLang, t }}>{children}</LangContext.Provider>;
 }
-
-export const useLang = () => useContext(LangContext);

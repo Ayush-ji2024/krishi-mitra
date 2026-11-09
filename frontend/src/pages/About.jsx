@@ -1,4 +1,4 @@
-import { useLang } from "../i18n/LangContext";
+import { useLang } from "../i18n/useLang";
 import { IconAlert, IconArrowRight, IconCamera, IconCheck, IconFlask, IconPin, IconSprout } from "../components/Icons";
 
 // Written for farmers, in plain words. Technical details (models, metrics,

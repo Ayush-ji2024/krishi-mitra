@@ -73,7 +73,10 @@ def test_unknown_soil_type_is_rejected(client):
 def test_out_of_training_range_gives_warning(client):
     r = client.post("/recommend-crop", json={**RICE_SAMPLE, "rainfall": 1000})
     assert r.status_code == 200
-    assert any("rainfall" in w for w in r.json()["warnings"])
+    warnings = r.json()["warnings"]
+    rain = [w for w in warnings if w["feature"] == "rainfall"]
+    assert rain and rain[0]["code"] == "out_of_range"
+    assert rain[0]["value"] > rain[0]["max"]
 
 
 def test_impossible_ph_is_rejected(client):
