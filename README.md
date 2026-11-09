@@ -9,7 +9,7 @@
 ![scikit-learn](https://img.shields.io/badge/scikit--learn-Random%20Forest-F7931E?logo=scikitlearn&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-backend-009688?logo=fastapi&logoColor=white)
 ![React](https://img.shields.io/badge/React-Vite-61DAFB?logo=react&logoColor=black)
-![Tests](https://img.shields.io/badge/tests-21%20passing-2b7d45)
+[![CI](https://github.com/Ayush-ji2024/krishi-mitra/actions/workflows/ci.yml/badge.svg)](https://github.com/Ayush-ji2024/krishi-mitra/actions/workflows/ci.yml)
 
 <!-- Live demo: add the link here after deployment -->
 
@@ -219,6 +219,8 @@ python scripts/build_soil_suitability.py     # optional: rebuild backend/app/soi
 uvicorn backend.app.main:app --reload        # http://127.0.0.1:8000/docs
 python -m pytest backend/tests -v
 ```
+
+On GitHub, [CI](.github/workflows/ci.yml) runs the tests, the frontend lint and the build on every push. The trained models are not in git, so there the API tests are skipped and the ranking and mocked-weather tests run.
 
 ### 5. Run the website
 

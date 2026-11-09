@@ -12,7 +12,14 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from backend.app.main import app
+from backend.app.main import MODEL_DIR, app
+
+# The trained models are not in git (see .gitignore), e.g. on CI. Skip these
+# tests there instead of failing; the ranking and weather tests still run.
+_MODELS = [MODEL_DIR / "crop_recommender.joblib", MODEL_DIR / "soil_classifier.pt"]
+if not all(m.exists() for m in _MODELS):
+    pytest.skip("trained models not found in models/ - train them first",
+                allow_module_level=True)
 
 # First row of the Kaggle dataset - a textbook "rice" sample.
 RICE_SAMPLE = {"N": 90, "P": 42, "K": 43, "temperature": 20.88,
