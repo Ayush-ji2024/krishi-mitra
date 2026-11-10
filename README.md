@@ -2,7 +2,7 @@
 
 # 🌾 Krishi Mitra — कृषि मित्र
 
-**A farmer-first crop advisor: soil type from a photo, live local weather, and crop suggestions that respect your soil — in Hindi and English.**
+**A farmer-first crop advisor: soil type from a photo, the usual weather of your village for the season you will grow in, and crop suggestions that respect your soil — in Hindi and English.**
 
 ![Python](https://img.shields.io/badge/Python-3.10-3776AB?logo=python&logoColor=white)
 ![PyTorch](https://img.shields.io/badge/PyTorch-MobileNetV2-EE4C2C?logo=pytorch&logoColor=white)
