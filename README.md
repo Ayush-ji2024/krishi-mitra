@@ -11,7 +11,9 @@
 ![React](https://img.shields.io/badge/React-Vite-61DAFB?logo=react&logoColor=black)
 [![CI](https://github.com/Ayush-ji2024/krishi-mitra/actions/workflows/ci.yml/badge.svg)](https://github.com/Ayush-ji2024/krishi-mitra/actions/workflows/ci.yml)
 
-<!-- Live demo: add the link here after deployment -->
+### [🌐 Live demo → krishi-mitra-silk-one.vercel.app](https://krishi-mitra-silk-one.vercel.app)
+
+<sub>Backend on Render's free plan: the first request after a quiet spell can take up to a minute while the server wakes up.</sub>
 
 <img src="docs/screenshots/home.png" alt="Krishi Mitra home page" width="880">
 
