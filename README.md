@@ -66,13 +66,13 @@ Krishi Mitra then shows the best-fitting crops, how strongly each one matches, a
 
 ## Highlights
 
-- 🔍 **Found and fixed a broken dataset.** 57% of the soil images were exact duplicates, and **every single test image (341/341) also appeared in the training set** — the original accuracy was memorisation. Rebuilt a leakage-free, stratified split.
-- 🧠 **Soil classifier: 91.1% test accuracy, 0.91 macro-F1** with MobileNetV2 transfer learning (two-phase fine-tuning, class-weighted loss, augmentation), trained on a CPU in ~12 minutes.
+- 🔍 **Found and fixed a broken dataset.** 57% of the soil images were exact duplicates and **every single test image (341/341) also appeared in the training set** — the original accuracy was memorisation. A second audit with perceptual hashing found **204 near-duplicates** (resized, watermarked or mirrored copies, burst shots) that still leaked into the test set. Rebuilt a leakage-free, stratified split of 452 truly distinct photos.
+- 🧠 **Soil classifier: 82.4% test accuracy, 0.81 macro-F1** on photos with no copy in training, with MobileNetV2 transfer learning (two-phase fine-tuning, class-weighted loss, augmentation), trained on a CPU in ~12 minutes. (The earlier 91% was inflated by near-duplicates: 100% on leaked test photos, 87% on the rest.)
 - 🌱 **Crop recommender: 99.3% test accuracy, 100% top-3 accuracy**, chosen by benchmarking Logistic Regression, an MLP and Random Forest with 5-fold stratified cross-validation.
 - 🧭 **Soil-aware ranking** using the FAO ECOCROP crop database, so a crop that does not suit the farmer's soil is moved down — without hiding what the model thinks.
 - 🌦️ **Weather auto-fill** from Open-Meteo (no API key), with geocoding for Indian villages and towns.
 - 📅 **Season-aware weather:** a crop is chosen for the season it will grow in, so the form is filled with that season's 5-year normals for the village — not with last month's weather.
-- 🚫 **Knows when a photo is not soil:** a selfie, a screenshot or a blank picture is recognised (93% of held-out non-soil photos caught, 96% of soil photos accepted) instead of being forced into a soil type.
+- 🚫 **Knows when a photo is not soil:** a selfie, a screenshot or a blank picture is recognised (87% of held-out non-soil photos caught, 90% of soil photos accepted) instead of being forced into a soil type.
 - 🛡️ **Honest by design:** out-of-range inputs trigger warnings, low-confidence soil predictions are flagged, near-zero suggestions are hidden, and the UI never presents a ranking score as a probability.
 - ✅ **32 automated tests** (API, not-soil check, ranking maths, mocked seasonal weather) run on every push by CI; FastAPI validates every input.
 - 📱 **Mobile-first React UI**: step-by-step wizard, sticky thumb-reachable actions, Hindi/English switch, no extra UI libraries.
@@ -116,12 +116,15 @@ This project started as a team prototype at C-DAC Patna. Before retraining anyth
 
 | Finding | Evidence | Fix |
 |---|---|---|
-| Exact duplicate images | **887 of 1,563** images (57%) were byte-identical copies, e.g. `images386.jpg` and `Copy of images386.jpg` | MD5-hash de-duplication → **672 unique images** |
-| Train–test leakage | **341 of 341** original test images were also in the training set | New stratified **70 / 15 / 15** split (470 / 101 / 101), fixed seed |
-| Conflicting labels | The same image was labelled both *alluvial* and *black* | All copies of conflicting images dropped |
-| Class imbalance | Alluvial had ~2.5× more images than clay | Class-weighted loss + macro-F1 for model selection |
+| Exact duplicate images | **887 of 1,563** images (57%) were byte-identical copies, e.g. `images386.jpg` and `Copy of images386.jpg` | MD5-hash de-duplication → 672 files |
+| Train–test leakage | **341 of 341** original test images were also in the training set | New stratified **70 / 15 / 15** split, fixed seed |
+| Near-duplicate images | After MD5 de-duplication, **204** more photos were copies of another one: resized, re-compressed, watermarked or mirrored versions and burst shots of the same field. **34 of 101 test photos** had such a copy in train — the model scored **100%** on them and **86.6%** on the rest | Perceptual-hash (pHash) grouping, one photo per group → **452 distinct photos**, split 316 / 68 / 68 with no near-copy across train and test |
+| Conflicting labels | The same image labelled *alluvial* and *black*; 8 more stock photos labelled both *alluvial* and *clay* (found as near-duplicates) | All copies of conflicting images dropped |
+| Class imbalance | Alluvial seemed ~2.5× bigger than clay — mostly because of its copies (114 vs 96 after de-duplication) | Class-weighted loss + macro-F1 for model selection |
 | Mixed / unreadable formats | A `.gif` silently skipped by PyTorch's `ImageFolder`, a stray `.DS_Store` | Every image re-saved as RGB JPEG; non-images skipped |
 | Synthetic crop rows | 700 randomly generated rows for 7 extra crops | Removed — only the real dataset is used |
+
+**How near-duplicates are found.** Every photo gets a 63-bit perceptual hash (grayscale 32×32 → DCT → low frequencies above the median), also for its mirror image. Two photos are grouped if their hashes differ in ≤ 6 bits, or in ≤ 10 bits *and* their average colour matches (≤ 1.5 of 255) — the colour rule stops different soil heaps on the same black background from being merged (among 400 such pairs it merged 326 same-label pairs and no different-label pair). Thresholds were chosen by looking at image pairs at each distance. One possible near-copy remains between train and validation (it can affect model selection, not the test score).
 
 Bugs fixed in the original code: soil classes of the image model and crop model did not match (`clay` vs `laterite`); the app's model sizes (22 classes, 15 inputs) could not load the trained model (29 classes, 11 inputs); the "best" model checkpoint was a reference to the live weights, so the last epoch was saved instead of the best one (fixed with `copy.deepcopy`); the crop model used its test set for early stopping.
 
@@ -135,13 +138,13 @@ Two phases: train only the new classification head (5 epochs), then fine-tune th
 
 | Soil | Precision | Recall | F1 | Test images |
 |---|---|---|---|---|
-| Alluvial | 0.947 | 0.857 | 0.900 | 42 |
-| Black | 0.810 | 0.895 | 0.850 | 19 |
-| Clay | 0.850 | 1.000 | 0.919 | 17 |
-| Red | 1.000 | 0.957 | 0.978 | 23 |
-| **Overall** | | | **accuracy 0.911 · macro-F1 0.912** | **101** |
+| Alluvial | 0.750 | 0.882 | 0.811 | 17 |
+| Black | 0.842 | 0.889 | 0.865 | 18 |
+| Clay | 0.750 | 0.643 | 0.692 | 14 |
+| Red | 0.941 | 0.842 | 0.889 | 19 |
+| **Overall** | | | **accuracy 0.824 · macro-F1 0.814** | **68** |
 
-Most errors are alluvial soil predicted as black or clay — alluvial soil varies from light brown to dark, overlapping with both. With only 101 test images, the accuracy has roughly ±6% uncertainty.
+Clay is the hardest class: 3 of 14 clay photos are predicted as alluvial — dry clay and alluvial soil look alike in a photo. With only 68 test images the accuracy is uncertain: the 95% confidence interval is **72–90%**. This is lower than the earlier 91%, and more honest: none of these test photos has a copy in the training set.
 
 <p>
   <img src="reports/soil/confusion_matrix.png" alt="Soil classifier confusion matrix" width="360">
@@ -150,19 +153,19 @@ Most errors are alluvial soil predicted as black or clay — alluvial soil varie
 
 ### "Is this even soil?" — rejecting non-soil photos
 
-A classifier always answers with one of its classes, so a selfie would be called "alluvial". To catch this, every photo's 1280-number feature fingerprint (the layer before the classifier) is compared with the fingerprints of the 470 training soil photos; if even the **most similar training photo** has a cosine similarity below a threshold, the app says *"This doesn't look like a soil photo"* and does not pre-select a soil type ([deep k-NN](https://arxiv.org/abs/2204.06507), k = 1, in [`scripts/calibrate_soil_ood.py`](scripts/calibrate_soil_ood.py)).
+A classifier always answers with one of its classes, so a selfie would be called "alluvial". To catch this, every photo's 1280-number feature fingerprint (the layer before the classifier) is compared with the fingerprints of the 316 training soil photos; if even the **most similar training photo** has a cosine similarity below a threshold, the app says *"This doesn't look like a soil photo"* and does not pre-select a soil type ([deep k-NN](https://arxiv.org/abs/2204.06507), k = 1, in [`scripts/calibrate_soil_ood.py`](scripts/calibrate_soil_ood.py)).
 
-- The **threshold** is set on the *validation* soil photos only (98% of them pass).
-- Non-soil photos for evaluation: 100 random photos from picsum.photos (people, buildings, landscapes, objects), plain colours / noise / gradients, and the app's own screenshots — de-duplicated and split in half by a hash. The **method was chosen on one half** (k-NN k = 1 vs k = 5 vs Mahalanobis distance) and **all numbers below use only the other half**.
+- The **threshold** is set on the *validation* soil photos only: 95% of them pass. Rejecting a real soil photo only means the farmer picks the soil type by hand; calling a selfie "alluvial" would give wrong advice.
+- Non-soil photos for evaluation: 100 random photos from picsum.photos (people, buildings, landscapes, objects), plain colours / noise / gradients, and the app's own screenshots — de-duplicated and split in half by the hash of each file. The **method and threshold were chosen on one half** together with the validation soil photos (k-NN k = 1 vs k = 5 vs Mahalanobis distance; 98% vs 95% pass rate) and **all numbers below use only the test soil photos and the other half**.
 
 | | Result |
 |---|---|
-| Soil photos accepted (test set) | **96%** (97 / 101) |
-| Non-soil photos caught (held-out, 58 photos) | **93%** — random photos 94%, generated 83%, screenshots 100% |
-| AUROC, fingerprint similarity | **0.980** |
-| AUROC, the classifier's own confidence (naive baseline) | 0.932 |
+| Soil photos accepted (test set) | **90%** (61 / 68) |
+| Non-soil photos caught (held-out, 62 photos) | **87%** — random photos 86%, generated 88%, screenshots 100% |
+| AUROC, fingerprint similarity | **0.968** |
+| AUROC, the classifier's own confidence (naive baseline) | 0.902 |
 
-Missed cases are understandable ones, e.g. a plain red image (red soil is red). The check needs only the stored fingerprints (0.8 MB) and adds no noticeable time per photo.
+Before the near-duplicate fix this check looked better (96% / 93%) — test soil photos were then matched by their own copies in training. The check needs only the stored fingerprints (0.5 MB) and adds no noticeable time per photo.
 
 <p><img src="reports/soil/ood_scores.png" alt="Similarity scores of soil vs non-soil photos with the threshold" width="560"></p>
 
@@ -281,7 +284,7 @@ The frontend reads the backend address from `VITE_API_URL` (see `frontend/.env.e
 
 The backend runs on **Render's free plan** and the website on **Vercel**, both deployed straight from this GitHub repo.
 
-**Why ONNX:** importing PyTorch alone made the API use ~440 MB of RAM — too close to the free plan's 512 MB. The soil model is exported to ONNX ([`scripts/export_soil_onnx.py`](scripts/export_soil_onnx.py)) and run with ONNX Runtime: **~220 MB**, and the same prediction as PyTorch on all 101 test images. PyTorch is now only needed for training.
+**Why ONNX:** importing PyTorch alone made the API use ~440 MB of RAM — too close to the free plan's 512 MB. The soil model is exported to ONNX ([`scripts/export_soil_onnx.py`](scripts/export_soil_onnx.py)) and run with ONNX Runtime: **~220 MB**, and the same prediction as PyTorch on all 68 test images. PyTorch is now only needed for training.
 
 **1. Backend → Render**
 
@@ -326,8 +329,8 @@ Impossible values (e.g. pH 20) are rejected with `422`; values outside the train
 
 - **22 crops only.** Wheat, sugarcane, mustard and potato — major crops in Bihar — are not in the dataset. Adding them needs real data, not synthetic rows.
 - **4 soil types, internet photos.** The soil model has not been tested on photos taken in real fields; accuracy there is likely lower.
-- **Near-duplicate soil photos.** Exact duplicates were removed, but the not-soil check shows several test photos with a ~1.0 similarity to a training photo — likely resized or re-encoded copies. The 91% test accuracy may therefore be somewhat optimistic; a perceptual-hash de-duplication would fix the split.
-- **Not-soil check is a safety net, not a guarantee.** It was evaluated on 58 held-out non-soil photos; unusual pictures (e.g. sand, rock, a brown wall) can still pass.
+- **Small soil dataset.** After removing exact and near-duplicates only 452 distinct photos remain (68 for testing), so the 82% accuracy has a wide confidence interval (72–90%). More, and more varied, field photos are the most useful next step.
+- **Not-soil check is a safety net, not a guarantee.** It was evaluated on 62 held-out non-soil photos; unusual pictures (e.g. sand, rock, a brown wall) can still pass.
 - **Rainfall period is undocumented** in the crop dataset (its values of 20–300 mm are far below annual totals), so the season's average monthly rainfall is an informed choice that the farmer can edit. The crop model itself has no season input: in a dry Rabi season, rainfall may fall below the training range (the app then warns).
 - **Soil suitability uses texture only** — not drainage, salinity or local varieties — and its weights (1.0 / 0.7 / 0.4) are chosen, not learned.
 - **Soil test values need a Soil Health Card.** Future work: estimate N-P-K ranges from district-level soil data when no card is available.

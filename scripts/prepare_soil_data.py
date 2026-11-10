@@ -6,9 +6,23 @@ What this script does:
   2. Skips files that are not valid images (e.g. .DS_Store, corrupt files).
   3. Finds exact duplicate images (same file content) using an MD5 hash,
      so the same photo can never end up in both train and test.
-  4. Cleans class names ("Alluvial soil", "Black Soil" -> "alluvial", "black").
-  5. Makes a fresh, stratified train / val / test split with a fixed seed.
-  6. Writes the images into data/soil_split/ as RGB JPEGs (the original data is
+  4. Finds NEAR-duplicates - the same photo resized, re-compressed, mirrored or
+     with a watermark, and burst shots of the same field - with a perceptual
+     hash (pHash). Photos whose hashes differ in <= --phash_threshold of 63 bits
+     are grouped (also through chains: A~B and B~C puts A, B, C together) and
+     only one photo per group is kept. Without this step, 34 of the 101 test
+     photos had a near-copy in train: the model scored 100% on those and 86.6%
+     on the rest, so the reported accuracy was inflated.
+     Two rules, chosen by looking at pairs:
+       - distance <= 6: always the same photo / scene;
+       - distance 7-10: the same photo only if the average colour also matches
+         (max channel difference <= 1.5 of 255). Different soil heaps on a black
+         background can reach distance 8-10 but differ in colour (>= 2.2);
+         among 400 such pairs this rule merged 326 same-label pairs and no
+         different-label pair.
+  5. Cleans class names ("Alluvial soil", "Black Soil" -> "alluvial", "black").
+  6. Makes a fresh, stratified train / val / test split with a fixed seed.
+  7. Writes the images into data/soil_split/ as RGB JPEGs (the original data is
      never touched) and a manifest.csv listing every image and its split.
 
 Usage:
@@ -23,7 +37,9 @@ import shutil
 from collections import Counter, defaultdict
 from pathlib import Path
 
-from PIL import Image
+import numpy as np
+from PIL import Image, ImageOps
+from scipy.fft import dctn
 from sklearn.model_selection import train_test_split
 
 
@@ -95,6 +111,61 @@ def remove_duplicates(records):
     return unique, n_dupes, conflicts
 
 
+def phash(img: Image.Image) -> np.ndarray:
+    """Perceptual hash: 63 bits describing the image's coarse structure.
+    Grayscale 32x32 -> 2-D DCT -> top-left 8x8 low frequencies (without the
+    overall-brightness term) -> 1 where above the median. Resizing, JPEG
+    compression and small edits barely change it."""
+    g = np.asarray(img.convert("L").resize((32, 32), Image.LANCZOS), dtype=np.float64)
+    low = dctn(g, norm="ortho")[:8, :8].flatten()[1:]
+    return low > np.median(low)
+
+
+def remove_near_duplicates(records, threshold, loose_threshold=10, max_colour_diff=1.5):
+    """
+    Group near-duplicate photos (pHash distance <= threshold, or <= loose_threshold
+    with the same average colour; mirrored copies count too) and keep one photo per group - the largest one. Groups that mix labels
+    are dropped completely, like exact duplicates with conflicting labels.
+    """
+    hashes, mirrored, colours, sizes = [], [], [], []
+    for r in records:
+        with Image.open(r["path"]) as img:
+            img = img.convert("RGB")
+            hashes.append(phash(img))
+            mirrored.append(phash(ImageOps.mirror(img)))
+            colours.append(np.asarray(img.resize((8, 8), Image.BOX), dtype=np.float32).reshape(-1, 3).mean(0))
+            sizes.append(img.width * img.height)
+    h, hm, col = np.array(hashes), np.array(mirrored), np.array(colours)
+    dist = np.minimum((h[:, None] != h[None]).sum(2), (h[:, None] != hm[None]).sum(2))
+    colour_diff = np.abs(col[:, None] - col[None]).max(2)
+    same = (dist <= threshold) | ((dist <= loose_threshold) & (colour_diff <= max_colour_diff))
+
+    # Union-find: put every close pair into the same group.
+    parent = list(range(len(records)))
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for a, b in zip(*np.where(np.triu(same, 1))):
+        parent[find(a)] = find(b)
+    groups = defaultdict(list)
+    for i in range(len(records)):
+        groups[find(i)].append(i)
+
+    kept, n_near, conflicts = [], 0, []
+    for members in groups.values():
+        labels = {records[i]["label"] for i in members}
+        if len(labels) > 1:
+            conflicts.append((sorted(labels), [str(records[i]["path"]) for i in members]))
+            continue
+        kept.append(records[max(members, key=lambda i: sizes[i])])
+        n_near += len(members) - 1
+    return kept, n_near, conflicts
+
+
 def split_records(records, val_size, test_size, seed):
     """Stratified split: every split keeps the same class proportions."""
     labels = [r["label"] for r in records]
@@ -142,7 +213,7 @@ def copy_split(splits, dst: Path):
         writer.writerows(rows)
 
 
-def print_report(total_found, skipped, n_dupes, conflicts, splits):
+def print_report(total_found, skipped, n_dupes, conflicts, n_near, near_conflicts, splits):
     print("\n========== SOIL DATASET REPORT ==========")
     print(f"Files found (valid images) : {total_found}")
     print(f"Skipped (not images)       : {len(skipped)}")
@@ -151,6 +222,11 @@ def print_report(total_found, skipped, n_dupes, conflicts, splits):
     print(f"Exact duplicates removed   : {n_dupes}")
     print(f"Conflicting-label images   : {len(conflicts)} (all copies dropped)")
     for h, labels, paths in conflicts[:10]:
+        print(f"    - labels {labels}: {paths}")
+    print(f"Near-duplicates removed    : {n_near}")
+    print(f"Near-dup. label conflicts  : {len(near_conflicts)} groups, "
+          f"{sum(len(p) for _, p in near_conflicts)} images (all dropped)")
+    for labels, paths in near_conflicts[:10]:
         print(f"    - labels {labels}: {paths}")
 
     classes = sorted({r["label"] for items in splits.values() for r in items})
@@ -171,6 +247,8 @@ def main():
     parser.add_argument("--val_size", type=float, default=0.15)
     parser.add_argument("--test_size", type=float, default=0.15)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--phash_threshold", type=int, default=6,
+                        help="Max pHash distance (of 63 bits) for two photos to count as near-duplicates.")
     parser.add_argument("--overwrite", action="store_true", help="Delete --dst first if it already exists.")
     args = parser.parse_args()
 
@@ -185,11 +263,13 @@ def main():
     print(f"Scanning {src} ...")
     records, skipped = collect_images(src)
     unique, n_dupes, conflicts = remove_duplicates(records)
+    print("Looking for near-duplicates (perceptual hash) ...")
+    unique, n_near, near_conflicts = remove_near_duplicates(unique, args.phash_threshold)
     splits = split_records(unique, args.val_size, args.test_size, args.seed)
 
     print(f"Copying images to {dst} ...")
     copy_split(splits, dst)
-    print_report(len(records), skipped, n_dupes, conflicts, splits)
+    print_report(len(records), skipped, n_dupes, conflicts, n_near, near_conflicts, splits)
     print(f"Done. Manifest written to {dst / 'manifest.csv'}")
 
 

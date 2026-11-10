@@ -12,13 +12,19 @@ Method (deep k-nearest-neighbours, Sun et al., ICML 2022):
   4. It is then measured, once, on the TEST soil photos and on non-soil photos.
 
 Choosing the method without fooling ourselves: the non-soil photos are
-de-duplicated and split in two halves (by a hash, so the split is fixed).
-The method was chosen on validation soil photos + the SELECTION half (57 photos),
-caught = share of non-soil photos rejected at the same 98% soil pass rate:
-    kNN k=1  AUROC 0.983, caught 91%  |  kNN k=5  AUROC 0.981, caught 79%
-    Mahalanobis on normalised features (class means, Ledoit-Wolf)  AUROC 0.990, caught 93%
-k=1 was kept: nearly as good as Mahalanobis, much simpler to explain and a
-smaller file. The reported numbers use only the EVALUATION half.
+de-duplicated and split in two halves by the hash of the FILE (independent of
+the model, so retraining never reshuffles them). Method and threshold were chosen
+using ONLY validation soil photos + the SELECTION half (53 photos); "pass" is
+estimated with 2-fold cross-validation inside the validation set:
+                     AUROC   98% pass: caught   95% pass: caught
+    kNN k=1          0.972        83%                93%
+    kNN k=5          0.971        73%                86%
+    Mahalanobis      0.983        84%                92%   (normalised features,
+                                                            class means, Ledoit-Wolf)
+Kept: kNN k=1 (as good as Mahalanobis, simpler, smaller file) with a 95% pass
+rate: wrongly rejecting a soil photo only means the farmer picks the soil type
+by hand, while calling a selfie "alluvial" gives wrong advice.
+The reported numbers use only the TEST soil photos and the EVALUATION half.
 
 For comparison it also reports how well the classifier's own confidence
 (max softmax probability) separates soil from non-soil - the naive approach.
@@ -90,8 +96,8 @@ def main():
     parser.add_argument("--out", type=Path, default=Path("models/soil_reference.npz"))
     parser.add_argument("--reports", type=Path, default=Path("reports/soil"))
     parser.add_argument("--k", type=int, default=1)
-    parser.add_argument("--reject-pct", type=float, default=2.0,
-                        help="% of validation soil photos allowed to be rejected (default 2)")
+    parser.add_argument("--reject-pct", type=float, default=5.0,
+                        help="% of validation soil photos allowed to be rejected (default 5)")
     args = parser.parse_args()
 
     clf = SoilClassifier(args.model)  # no reference yet: we are building it
@@ -119,11 +125,13 @@ def main():
     ood_s = {name: knn_score(bank, f, args.k) for name, (f, _) in ood.items()}
 
     # De-duplicate the non-soil photos and keep only the EVALUATION half (see docstring).
+    # The key is the file content (or the pixels of a generated image), not the model's output.
     keep, seen = {}, set()
-    for name, (f, _) in ood.items():
+    for name, items in ood_sets.items():
         rows = []
-        for i, row in enumerate(f):
-            key = hashlib.md5(np.round(row, 3).tobytes()).hexdigest()
+        for i, item in enumerate(items):
+            data = item.read_bytes() if isinstance(item, Path) else item.tobytes()
+            key = hashlib.md5(data).hexdigest()
             if key not in seen and int(key, 16) % 2 == 1:
                 rows.append(i)
             seen.add(key)
