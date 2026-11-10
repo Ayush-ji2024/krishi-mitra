@@ -23,17 +23,14 @@ jobs:
           cache: pip
           cache-dependency-path: requirements*.txt
 
+      # Same runtime packages as the server (no PyTorch - the API uses ONNX) + pytest.
       - name: Install dependencies
-        run: |
-          # CPU-only PyTorch first: the default Linux wheel pulls in ~2 GB of CUDA.
-          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-          pip install -r requirements-dev.txt
+        run: pip install -r requirements-dev.txt
 
       - name: Check that all Python files compile
         run: python -m compileall -q backend scripts
 
-      # The trained models are not in git, so the API tests skip themselves here;
-      # the ranking-maths and (mocked) weather tests run in full.
+      # The runtime models are in git, so the API tests run against the real models.
       - name: Run tests
         run: python -m pytest backend/tests -v -rs
 

@@ -159,7 +159,7 @@ krishi-mitra/
 ├── backend/
 │   ├── app/
 │   │   ├── main.py               # FastAPI app: endpoints, CORS, model loading
-│   │   ├── soil.py               # MobileNetV2 inference (same preprocessing as training)
+│   │   ├── soil.py               # MobileNetV2 inference via ONNX Runtime (same preprocessing as training)
 │   │   ├── crop.py               # Random Forest inference + soil re-ranking + range warnings
 │   │   ├── weather.py            # Open-Meteo geocoding and 30-day weather
 │   │   ├── schemas.py            # Pydantic request/response models and validation
@@ -174,11 +174,15 @@ krishi-mitra/
 ├── scripts/
 │   ├── prepare_soil_data.py      # audit, de-duplicate and split the soil images
 │   ├── train_soil_classifier.py  # MobileNetV2 transfer learning + reports
+│   ├── export_soil_onnx.py       # PyTorch → ONNX for the API (checked against PyTorch)
 │   ├── train_crop_recommender.py # model comparison with CV + reports
 │   └── build_soil_suitability.py # FAO ECOCROP → soil_suitability.json
 ├── reports/                      # metrics, confusion matrices, training curves
 ├── docs/screenshots/
-├── requirements.txt              # runtime dependencies (pinned)
+├── models/                       # runtime models (ONNX + joblib, ~20 MB) for the API
+├── render.yaml                   # Render deployment (free plan)
+├── requirements.txt              # API runtime dependencies (pinned, no PyTorch)
+├── requirements-train.txt        # + PyTorch, ONNX, matplotlib for training
 └── requirements-dev.txt          # + pytest
 ```
 
@@ -191,8 +195,14 @@ Requires **Python 3.10** and a recent **Node.js LTS (22 or newer)**.
 ```bash
 python -m venv venv
 venv\Scripts\activate            # Windows  (macOS/Linux: source venv/bin/activate)
+pip install -r requirements-dev.txt           # enough to run the API and the tests
+```
+
+The trained runtime models are in `models/`, so the API runs straight away. To **retrain**, also install PyTorch (CPU build) and the training extras:
+
+```bash
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-pip install -r requirements-dev.txt
+pip install -r requirements-train.txt
 ```
 
 ### 2. Data
@@ -203,13 +213,14 @@ pip install -r requirements-dev.txt
 | [Crop Recommendation dataset (Kaggle)](https://www.kaggle.com/datasets/atharvaingle/crop-recommendation-dataset) | `data/Crop_recommendation.csv` |
 | FAO ECOCROP (only to rebuild the soil table) | `git clone --depth 1 https://github.com/OpenCLIM/ecocrop.git data/external/ecocrop` |
 
-`data/` and `models/` are git-ignored.
+`data/` is git-ignored. In `models/` only the two runtime models are committed; the PyTorch checkpoint (`soil_classifier.pt`) stays local.
 
 ### 3. Train the models
 
 ```bash
 python scripts/prepare_soil_data.py          # audit + clean split → data/soil_split/
 python scripts/train_soil_classifier.py      # → models/soil_classifier.pt, reports/soil/
+python scripts/export_soil_onnx.py           # → models/soil_classifier.onnx (what the API loads)
 python scripts/train_crop_recommender.py     # → models/crop_recommender.joblib, reports/crop/
 python scripts/build_soil_suitability.py     # optional: rebuild backend/app/soil_suitability.json
 ```
@@ -221,7 +232,7 @@ uvicorn backend.app.main:app --reload        # http://127.0.0.1:8000/docs
 python -m pytest backend/tests -v
 ```
 
-On GitHub, [CI](.github/workflows/ci.yml) runs the tests, the frontend lint and the build on every push. The trained models are not in git, so there the API tests are skipped and the ranking and mocked-weather tests run.
+On GitHub, [CI](.github/workflows/ci.yml) runs all tests (with the committed models), the frontend lint and the build on every push.
 
 ### 5. Run the website
 
@@ -235,27 +246,25 @@ The frontend reads the backend address from `VITE_API_URL` (see `frontend/.env.e
 
 ## Deploy (live demo)
 
-The backend runs on a free **Hugging Face Space** (Docker, enough RAM for PyTorch) and the website on **Vercel**.
+The backend runs on **Render's free plan** and the website on **Vercel**, both deployed straight from this GitHub repo.
 
-**1. Backend → Hugging Face Spaces**
+**Why ONNX:** importing PyTorch alone made the API use ~440 MB of RAM — too close to the free plan's 512 MB. The soil model is exported to ONNX ([`scripts/export_soil_onnx.py`](scripts/export_soil_onnx.py)) and run with ONNX Runtime: **~220 MB**, and the same prediction as PyTorch on all 101 test images. PyTorch is now only needed for training.
 
-```bash
-# needs: a Hugging Face account + a token with "write" access (huggingface.co/settings/tokens)
-$env:HF_TOKEN="hf_..."                                   # macOS/Linux: export HF_TOKEN=hf_...
-python scripts/deploy_space.py --space <hf-username>/krishi-mitra-api
-```
+**1. Backend → Render**
 
-The script uploads the [`Dockerfile`](Dockerfile), `backend/app/`, the trained models and `requirements.txt` (13 files, ~20 MB); Hugging Face builds the image and serves the API at `https://<hf-username>-krishi-mitra-api.hf.space` (check `/health`). Re-run the same command to deploy a new version.
+In the [Render dashboard](https://dashboard.render.com): *New → Blueprint* → pick this repo. [`render.yaml`](render.yaml) sets everything up (Python 3.10, `pip install -r requirements.txt`, uvicorn, health check on `/health`). When asked for `ALLOWED_ORIGINS`, enter the Vercel URL from step 2 (or `http://localhost:5173` for now and change it later under *Environment*). The API is then live at `https://krishi-mitra-api.onrender.com` (or a similar name); check `/health`.
 
 **2. Website → Vercel**
 
-Import the GitHub repo at [vercel.com/new](https://vercel.com/new), set **Root Directory** to `frontend` (Vite is detected automatically) and add the environment variable `VITE_API_URL = https://<hf-username>-krishi-mitra-api.hf.space`. Hash routing (`/#/advisor`) means no rewrite rules are needed.
+Import the repo at [vercel.com/new](https://vercel.com/new), set **Root Directory** to `frontend` (Vite is detected automatically) and add the environment variable `VITE_API_URL = <your Render URL>`. Hash routing (`/#/advisor`) means no rewrite rules are needed.
 
 **3. Allow the website to call the API (CORS)**
 
-In the Space: *Settings → Variables and secrets → New variable* `ALLOWED_ORIGINS = https://<your-site>.vercel.app` (comma-separated for several). Optionally `ALLOWED_ORIGIN_REGEX` for Vercel preview URLs, e.g. `^https://krishi-mitra(-[a-z0-9-]+)?\.vercel\.app$`.
+On Render, set `ALLOWED_ORIGINS = https://<your-site>.vercel.app` (comma-separated for several). Optionally `ALLOWED_ORIGIN_REGEX` for Vercel preview URLs, e.g. `^https://krishi-mitra(-[a-z0-9-]+)?\.vercel\.app$`.
 
-> Free Spaces sleep after ~48 hours without visitors; the first request after that takes about a minute while it wakes up.
+> The free Render plan sleeps after 15 minutes without visitors; the first request after that takes up to a minute while it wakes up.
+
+A [`Dockerfile`](Dockerfile) is also included for any Docker host.
 
 ## API
 

@@ -52,8 +52,8 @@ async def lifespan(app: FastAPI):
         return CropRecommender(MODEL_DIR / "crop_recommender.joblib")
 
     def load_soil():
-        from .soil import SoilClassifier  # imports torch only when needed
-        return SoilClassifier(MODEL_DIR / "soil_classifier.pt")
+        from .soil import SoilClassifier  # ONNX model, see scripts/export_soil_onnx.py
+        return SoilClassifier(MODEL_DIR / "soil_classifier.onnx")
 
     app.state.crop, app.state.crop_error = _load("crop model", load_crop)
     app.state.soil, app.state.soil_error = _load("soil model", load_soil)

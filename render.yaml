@@ -1,0 +1,21 @@
+# Render Blueprint: deploys the Krishi Mitra API on Render's free plan.
+# In the Render dashboard: New -> Blueprint -> pick this GitHub repo.
+# Render installs requirements.txt (no PyTorch: the API uses ONNX, ~220 MB RAM,
+# within the free plan's 512 MB) and starts uvicorn on the port it provides.
+services:
+  - type: web
+    name: krishi-mitra-api
+    runtime: python
+    plan: free
+    region: singapore          # closest Render region to India
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true           # redeploy on every push to main
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.15
+      # The website allowed to call this API, e.g. https://krishi-mitra.vercel.app
+      # (Render asks for the value when the Blueprint is created).
+      - key: ALLOWED_ORIGINS
+        sync: false

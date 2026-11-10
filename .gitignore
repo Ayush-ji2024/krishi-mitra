@@ -1,6 +1,10 @@
 # Project data & trained models (bade files, GitHub pe nahi jaayenge)
 data/
-models/
+# models/ is ignored EXCEPT the two small runtime models the API needs (~20 MB),
+# so a server can deploy straight from GitHub. The PyTorch checkpoint stays local.
+models/*
+!models/crop_recommender.joblib
+!models/soil_classifier.onnx
 
 # OS ki banayi faltu files
 .DS_Store

@@ -1,0 +1,9 @@
+# Everything needed to TRAIN the models and export the soil model to ONNX.
+# Install the CPU build of PyTorch first (much smaller than the default):
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+#   pip install -r requirements-train.txt
+-r requirements.txt
+torch==2.14.0
+torchvision==0.29.0
+onnx==1.23.2
+matplotlib==3.10.9

@@ -1,13 +1,16 @@
-"""Soil classification: loads the MobileNetV2 checkpoint saved by
-scripts/train_soil_classifier.py and predicts the soil type of a photo."""
+"""Soil classification: runs the MobileNetV2 model exported to ONNX by
+scripts/export_soil_onnx.py and predicts the soil type of a photo.
 
+The API uses onnxruntime instead of PyTorch: same answers, ~10x less memory,
+so the backend fits on small free servers. PyTorch is only needed for training.
+"""
+
+import json
 from pathlib import Path
 
-import torch
-import torch.nn as nn
+import numpy as np
+import onnxruntime as ort
 from PIL import Image
-from torchvision import transforms
-from torchvision.models import mobilenet_v2
 
 # Below this confidence we ask the user to retake the photo or pick the soil manually.
 LOW_CONFIDENCE = 0.60
@@ -15,32 +18,43 @@ LOW_CONFIDENCE = 0.60
 
 class SoilClassifier:
     def __init__(self, model_path: Path):
-        # weights_only=True: only load tensors and plain data, never run code
-        # from the file (safer; the checkpoint contains nothing else).
-        ckpt = torch.load(model_path, map_location="cpu", weights_only=True)
-        if ckpt.get("arch") != "mobilenet_v2":
-            raise ValueError(f"Unsupported architecture: {ckpt.get('arch')}")
+        options = ort.SessionOptions()
+        options.intra_op_num_threads = 1  # small free servers have ~1 CPU
+        self.session = ort.InferenceSession(str(model_path), options, providers=["CPUExecutionProvider"])
 
-        self.class_names = ckpt["class_names"]
-        model = mobilenet_v2(weights=None)
-        model.classifier[1] = nn.Linear(model.last_channel, len(self.class_names))
-        model.load_state_dict(ckpt["state_dict"])
-        model.eval()
-        self.model = model
+        # Class names and preprocessing settings are stored inside the .onnx file.
+        meta = self.session.get_modelmeta().custom_metadata_map
+        if meta.get("arch") != "mobilenet_v2":
+            raise ValueError(f"Unsupported architecture: {meta.get('arch')}")
+        self.class_names = json.loads(meta["class_names"])
+        self.size = int(meta["img_size"])
+        self.resize_to = round(self.size / 0.875)  # 224 -> 256, as in training
+        self.mean = np.array(json.loads(meta["mean"]), dtype=np.float32).reshape(3, 1, 1)
+        self.std = np.array(json.loads(meta["std"]), dtype=np.float32).reshape(3, 1, 1)
+        self.input_name = self.session.get_inputs()[0].name
 
-        # EXACTLY the same preprocessing as the validation/test data in training.
-        size = ckpt["img_size"]
-        self.transform = transforms.Compose([
-            transforms.Resize(round(size / 0.875)),  # 224 -> 256, as in training
-            transforms.CenterCrop(size),
-            transforms.ToTensor(),
-            transforms.Normalize(ckpt["mean"], ckpt["std"]),
-        ])
+    def preprocess(self, image: Image.Image) -> np.ndarray:
+        """EXACTLY the validation/test preprocessing used in training, without torchvision:
+        Resize(256) on the shorter side -> CenterCrop(224) -> scale to 0..1 -> Normalize."""
+        image = image.convert("RGB")
+        w, h = image.size
+        short, long = (w, h) if w <= h else (h, w)
+        new_short, new_long = self.resize_to, int(self.resize_to * long / short)
+        new_w, new_h = (new_short, new_long) if w <= h else (new_long, new_short)
+        image = image.resize((new_w, new_h), Image.BILINEAR)
 
-    @torch.no_grad()
+        top = int(round((new_h - self.size) / 2.0))
+        left = int(round((new_w - self.size) / 2.0))
+        image = image.crop((left, top, left + self.size, top + self.size))
+
+        x = np.asarray(image, dtype=np.float32).transpose(2, 0, 1) / 255.0  # HWC -> CHW
+        x = (x - self.mean) / self.std
+        return x[np.newaxis]  # add batch dimension
+
     def predict(self, image: Image.Image) -> dict:
-        x = self.transform(image.convert("RGB")).unsqueeze(0)  # add batch dimension
-        probs = torch.softmax(self.model(x), dim=1)[0]
+        logits = self.session.run(None, {self.input_name: self.preprocess(image)})[0][0]
+        exp = np.exp(logits - logits.max())  # softmax, numerically stable
+        probs = exp / exp.sum()
         best = int(probs.argmax())
         confidence = float(probs[best])
         return {
