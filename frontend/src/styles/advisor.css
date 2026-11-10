@@ -106,6 +106,15 @@
 .weather-card-head svg { flex: none; margin-top: 2px; }
 .weather-card-head small { display: block; color: var(--ink-soft); }
 .weather-note { display: block; margin-top: 8px; color: var(--ink-soft); }
+.season-label { margin: 12px 0 6px; font-weight: 600; font-size: 0.9rem; color: var(--leaf-800); }
+.season-picker { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.season-option {
+  display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 48px;
+  padding: 8px 6px; border-radius: 12px; border: 1.5px solid var(--line); background: #fff; color: var(--ink); cursor: pointer; font: inherit;
+}
+.season-option small { color: var(--ink-soft); font-size: 0.78rem; }
+.season-option:hover { border-color: var(--leaf-600); }
+.season-option.is-selected { border-color: var(--leaf-600); background: var(--leaf-50); box-shadow: 0 0 0 3px rgba(43, 125, 69, 0.16); }
 .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 
 /* ---------------- Soil test step ---------------- */

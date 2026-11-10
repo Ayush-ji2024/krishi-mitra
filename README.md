@@ -43,7 +43,7 @@
 A farmer answers three simple questions, one screen at a time:
 
 1. **Your soil** — upload a photo and a CNN suggests the soil type (alluvial, black, clay or red), or simply pick it.
-2. **Where is your farm?** — type a village or town; the last 30 days of temperature, humidity and rainfall are filled in automatically.
+2. **Where is your farm?** — type a village or town and pick the season (Kharif, Rabi or Zaid); the usual temperature, humidity and rainfall of that season — a 5-year average for that place — are filled in automatically.
 3. **Your soil test** — enter N, P, K and pH from the Soil Health Card.
 
 Krishi Mitra then shows the best-fitting crops, how strongly each one matches, and whether it suits **that** soil type — in plain words, never as a misleading percentage.
@@ -71,8 +71,10 @@ Krishi Mitra then shows the best-fitting crops, how strongly each one matches, a
 - 🌱 **Crop recommender: 99.3% test accuracy, 100% top-3 accuracy**, chosen by benchmarking Logistic Regression, an MLP and Random Forest with 5-fold stratified cross-validation.
 - 🧭 **Soil-aware ranking** using the FAO ECOCROP crop database, so a crop that does not suit the farmer's soil is moved down — without hiding what the model thinks.
 - 🌦️ **Weather auto-fill** from Open-Meteo (no API key), with geocoding for Indian villages and towns.
+- 📅 **Season-aware weather:** a crop is chosen for the season it will grow in, so the form is filled with that season's 5-year normals for the village — not with last month's weather.
+- 🚫 **Knows when a photo is not soil:** a selfie, a screenshot or a blank picture is recognised (93% of held-out non-soil photos caught, 96% of soil photos accepted) instead of being forced into a soil type.
 - 🛡️ **Honest by design:** out-of-range inputs trigger warnings, low-confidence soil predictions are flagged, near-zero suggestions are hidden, and the UI never presents a ranking score as a probability.
-- ✅ **21 automated tests** (API, ranking maths, mocked weather service); FastAPI validates every input.
+- ✅ **32 automated tests** (API, not-soil check, ranking maths, mocked seasonal weather) run on every push by CI; FastAPI validates every input.
 - 📱 **Mobile-first React UI**: step-by-step wizard, sticky thumb-reachable actions, Hindi/English switch, no extra UI libraries.
 
 ## How it works
@@ -82,7 +84,7 @@ flowchart LR
     U["Farmer<br/>(React, Hindi / English)"] -->|soil photo| S["/predict-soil<br/>MobileNetV2"]
     S -->|soil type| U
     U -->|village name| P["/places + /weather"]
-    P <-->|geocoding + last 30 days| OM[("Open-Meteo")]
+    P <-->|geocoding + 5-year daily history| OM[("Open-Meteo")]
     P -->|weather values| U
     U -->|N, P, K, pH + weather + soil type| R["/recommend-crop"]
     R --> RF["Random Forest<br/>probability per crop"]
@@ -98,7 +100,15 @@ score = model probability × soil weight      (good 1.0 · possible 0.7 · poor 
 
 This is a *soft* re-ranking: if the model is very confident, a "possible" soil does not overturn it; soil decides between crops the model finds similar. The table is generated reproducibly by [`scripts/build_soil_suitability.py`](scripts/build_soil_suitability.py) and sanity-checks against known agronomy (cotton is "good" on black soil, coffee "poor" on heavy soils).
 
-**Weather.** The API geocodes the place name and fetches daily data for the last 30 days: mean temperature, mean humidity and total rainfall. If exactly one place matches, it is picked automatically; if several do (e.g. *Rampur* exists in many states), the farmer chooses.
+**Weather by season.** A crop is chosen for the season it will *grow* in — asking in November should describe the Rabi winter, not October's monsoon tail. The API geocodes the place name, downloads the last 5 complete years of daily weather from the Open-Meteo historical archive (ERA5) in one request, and computes each season's normals: **Kharif** (Jun–Oct), **Rabi** (Nov–Mar) and **Zaid** (Mar–Jun) — mean temperature, mean humidity and the **average rainfall per month**. The crop dataset's rainfall (20–300 mm) matches monthly totals, not seasonal or yearly ones, so a per-month figure fits the model best. The upcoming season is pre-selected from today's date, results are cached per location, and the farmer can switch season or edit any value. If exactly one place matches the name, it is picked automatically; if several do (e.g. *Rampur* exists in many states), the farmer chooses.
+
+| Place | Kharif (Jun–Oct) | Rabi (Nov–Mar) | Zaid (Mar–Jun) |
+|---|---|---|---|
+| Begusarai, Bihar | 29.0 °C · 79 % · 217 mm/month | 19.6 °C · 72 % · 11 mm/month | 29.1 °C · 57 % · 67 mm/month |
+| Jaipur, Rajasthan | 28.3 °C · 67 % · 124 mm/month | 18.9 °C · 54 % · 10 mm/month | 30.0 °C · 35 % · 30 mm/month |
+| Kochi, Kerala | 26.1 °C · 89 % · 385 mm/month | 27.1 °C · 79 % · 91 mm/month | 27.5 °C · 84 % · 340 mm/month |
+
+<sub>Normals for 2021–2025 as returned by the API.</sub>
 
 ## Data audit: what was wrong with the original data
 
@@ -138,6 +148,24 @@ Most errors are alluvial soil predicted as black or clay — alluvial soil varie
   <img src="reports/soil/training_curves.png" alt="Soil classifier training curves" width="480">
 </p>
 
+### "Is this even soil?" — rejecting non-soil photos
+
+A classifier always answers with one of its classes, so a selfie would be called "alluvial". To catch this, every photo's 1280-number feature fingerprint (the layer before the classifier) is compared with the fingerprints of the 470 training soil photos; if even the **most similar training photo** has a cosine similarity below a threshold, the app says *"This doesn't look like a soil photo"* and does not pre-select a soil type ([deep k-NN](https://arxiv.org/abs/2204.06507), k = 1, in [`scripts/calibrate_soil_ood.py`](scripts/calibrate_soil_ood.py)).
+
+- The **threshold** is set on the *validation* soil photos only (98% of them pass).
+- Non-soil photos for evaluation: 100 random photos from picsum.photos (people, buildings, landscapes, objects), plain colours / noise / gradients, and the app's own screenshots — de-duplicated and split in half by a hash. The **method was chosen on one half** (k-NN k = 1 vs k = 5 vs Mahalanobis distance) and **all numbers below use only the other half**.
+
+| | Result |
+|---|---|
+| Soil photos accepted (test set) | **96%** (97 / 101) |
+| Non-soil photos caught (held-out, 58 photos) | **93%** — random photos 94%, generated 83%, screenshots 100% |
+| AUROC, fingerprint similarity | **0.980** |
+| AUROC, the classifier's own confidence (naive baseline) | 0.932 |
+
+Missed cases are understandable ones, e.g. a plain red image (red soil is red). The check needs only the stored fingerprints (0.8 MB) and adds no noticeable time per photo.
+
+<p><img src="reports/soil/ood_scores.png" alt="Similarity scores of soil vs non-soil photos with the threshold" width="560"></p>
+
 ### Crop recommender — model comparison
 
 | Model | 5-fold CV macro-F1 (train split) |
@@ -163,10 +191,10 @@ krishi-mitra/
 │   │   ├── main.py               # FastAPI app: endpoints, CORS, model loading
 │   │   ├── soil.py               # MobileNetV2 inference via ONNX Runtime (same preprocessing as training)
 │   │   ├── crop.py               # Random Forest inference + soil re-ranking + range warnings
-│   │   ├── weather.py            # Open-Meteo geocoding and 30-day weather
+│   │   ├── weather.py            # Open-Meteo geocoding + 5-year season normals (cached)
 │   │   ├── schemas.py            # Pydantic request/response models and validation
 │   │   └── soil_suitability.json # generated from FAO ECOCROP
-│   └── tests/                    # 21 pytest tests (API, ranking, mocked weather)
+│   └── tests/                    # 32 pytest tests (API, not-soil check, ranking, mocked weather)
 ├── frontend/                     # React + Vite, mobile-first, Hindi/English
 │   └── src/
 │       ├── pages/                # Home, Advisor (4-step wizard), About
@@ -177,11 +205,12 @@ krishi-mitra/
 │   ├── prepare_soil_data.py      # audit, de-duplicate and split the soil images
 │   ├── train_soil_classifier.py  # MobileNetV2 transfer learning + reports
 │   ├── export_soil_onnx.py       # PyTorch → ONNX for the API (checked against PyTorch)
+│   ├── calibrate_soil_ood.py     # "is this soil?" fingerprints + threshold + evaluation
 │   ├── train_crop_recommender.py # model comparison with CV + reports
 │   └── build_soil_suitability.py # FAO ECOCROP → soil_suitability.json
 ├── reports/                      # metrics, confusion matrices, training curves
 ├── docs/screenshots/
-├── models/                       # runtime models (ONNX + joblib, ~20 MB) for the API
+├── models/                       # runtime models (ONNX, joblib, soil fingerprints; ~21 MB)
 ├── render.yaml                   # Render deployment (free plan)
 ├── requirements.txt              # API runtime dependencies (pinned, no PyTorch)
 ├── requirements-train.txt        # + PyTorch, ONNX, matplotlib for training
@@ -213,9 +242,10 @@ pip install -r requirements-train.txt
 |---|---|
 | Soil images (4 classes: Alluvial, Black, Clay, Red — `Train/` and `test/` folders) | `data/soil_images/` |
 | [Crop Recommendation dataset (Kaggle)](https://www.kaggle.com/datasets/atharvaingle/crop-recommendation-dataset) | `data/Crop_recommendation.csv` |
+| Non-soil photos (only to evaluate the not-soil check; any images) | `data/ood/` |
 | FAO ECOCROP (only to rebuild the soil table) | `git clone --depth 1 https://github.com/OpenCLIM/ecocrop.git data/external/ecocrop` |
 
-`data/` is git-ignored. In `models/` only the two runtime models are committed; the PyTorch checkpoint (`soil_classifier.pt`) stays local.
+`data/` is git-ignored. In `models/` only the runtime files are committed (`crop_recommender.joblib`, `soil_classifier.onnx`, `soil_reference.npz`); the PyTorch checkpoint (`soil_classifier.pt`) stays local.
 
 ### 3. Train the models
 
@@ -223,6 +253,7 @@ pip install -r requirements-train.txt
 python scripts/prepare_soil_data.py          # audit + clean split → data/soil_split/
 python scripts/train_soil_classifier.py      # → models/soil_classifier.pt, reports/soil/
 python scripts/export_soil_onnx.py           # → models/soil_classifier.onnx (what the API loads)
+python scripts/calibrate_soil_ood.py         # → models/soil_reference.npz ("is this soil?" check)
 python scripts/train_crop_recommender.py     # → models/crop_recommender.joblib, reports/crop/
 python scripts/build_soil_suitability.py     # optional: rebuild backend/app/soil_suitability.json
 ```
@@ -276,10 +307,10 @@ Interactive docs are generated by FastAPI at `/docs`.
 |---|---|---|
 | `GET` | `/health` | Whether both models loaded |
 | `GET` | `/meta` | Soil types, crops, training ranges and the soil suitability table |
-| `POST` | `/predict-soil` | Image upload (≤ 5 MB) → soil type, confidence, per-class probabilities, `low_confidence` flag |
+| `POST` | `/predict-soil` | Image upload (≤ 5 MB) → soil type, confidence, per-class probabilities, `low_confidence` and `is_soil` flags |
 | `POST` | `/recommend-crop` | N, P, K, temperature, humidity, pH, rainfall, optional soil type → up to 3 crops with probability, soil suitability and warnings |
 | `GET` | `/places?q=` | Indian places matching a name (Open-Meteo geocoding) |
-| `GET` | `/weather?lat=&lon=` | Mean temperature, mean humidity and total rainfall over the last 30 days |
+| `GET` | `/weather?lat=&lon=` | For Kharif, Rabi and Zaid: mean temperature, mean humidity and average monthly rainfall over the last 5 years, plus the upcoming season |
 
 Example:
 
@@ -295,7 +326,9 @@ Impossible values (e.g. pH 20) are rejected with `422`; values outside the train
 
 - **22 crops only.** Wheat, sugarcane, mustard and potato — major crops in Bihar — are not in the dataset. Adding them needs real data, not synthetic rows.
 - **4 soil types, internet photos.** The soil model has not been tested on photos taken in real fields; accuracy there is likely lower.
-- **Rainfall period is undocumented** in the crop dataset (its values of 20–300 mm are far below annual totals), so the 30-day total is an informed estimate that the farmer can edit.
+- **Near-duplicate soil photos.** Exact duplicates were removed, but the not-soil check shows several test photos with a ~1.0 similarity to a training photo — likely resized or re-encoded copies. The 91% test accuracy may therefore be somewhat optimistic; a perceptual-hash de-duplication would fix the split.
+- **Not-soil check is a safety net, not a guarantee.** It was evaluated on 58 held-out non-soil photos; unusual pictures (e.g. sand, rock, a brown wall) can still pass.
+- **Rainfall period is undocumented** in the crop dataset (its values of 20–300 mm are far below annual totals), so the season's average monthly rainfall is an informed choice that the farmer can edit. The crop model itself has no season input: in a dry Rabi season, rainfall may fall below the training range (the app then warns).
 - **Soil suitability uses texture only** — not drainage, salinity or local varieties — and its weights (1.0 / 0.7 / 0.4) are chosen, not learned.
 - **Soil test values need a Soil Health Card.** Future work: estimate N-P-K ranges from district-level soil data when no card is available.
 

@@ -4,11 +4,21 @@ import { useLang } from "../i18n/useLang";
 import NumberField from "../components/NumberField";
 import { IconDrop, IconPin, IconRain, IconSearch, IconThermo } from "../components/Icons";
 
-// Step 2: weather. Search a place -> fetch the last 30 days -> fill the fields.
-// The fields stay editable, because the rainfall value is only an estimate.
+// Step 2: weather. Search a place -> fetch the usual weather of each season
+// (5-year averages) -> fill the fields for the chosen season.
+// The fields stay editable, because these are averages, not a forecast.
+
+const SEASONS = ["kharif", "rabi", "zaid"];
+
+// [6, 7, 8, 9, 10] -> "Jun–Oct" (month names in the chosen language)
+function monthRange(months, lang) {
+  const name = (m) => new Date(2000, m - 1, 1).toLocaleString(lang === "hi" ? "hi-IN" : "en-IN", { month: "short" });
+  return `${name(months[0])}–${name(months.at(-1))}`;
+}
+
 export default function WeatherStep({ advisor }) {
   const { t, lang } = useLang();
-  const { values, setValue, place, setPlace } = advisor;
+  const { values, setValue, setMany, place, setPlace, season, setSeason } = advisor;
   const [query, setQuery] = useState(place?.place.name ?? "");
   const [matches, setMatches] = useState(null);
   const [status, setStatus] = useState("");   // "", "searching", "getting"
@@ -40,10 +50,8 @@ export default function WeatherStep({ advisor }) {
     setStatus("getting");
     try {
       const w = await api.weather(p.latitude, p.longitude);
-      setValue("temperature", String(w.temperature));
-      setValue("humidity", String(w.humidity));
-      setValue("rainfall", String(w.rainfall));
       setPlace({ place: p, weather: w });
+      fill(w, season || w.default_season); // keep the farmer's season if they already chose one
     } catch (err) {
       setError(err.message);
     } finally {
@@ -51,8 +59,14 @@ export default function WeatherStep({ advisor }) {
     }
   }
 
+  // Put one season's averages into the form.
+  function fill(w, s) {
+    const v = w.seasons[s];
+    setSeason(s);
+    setMany({ temperature: String(v.temperature), humidity: String(v.humidity), rainfall: String(v.rainfall) });
+  }
+
   const label = (p) => [p.name, p.district !== p.name ? p.district : null, p.state].filter(Boolean).join(", ");
-  const fmtDate = (d) => new Date(d).toLocaleDateString(lang === "hi" ? "hi-IN" : "en-IN", { day: "numeric", month: "short" });
   const busy = status !== "";
 
   return (
@@ -102,8 +116,26 @@ export default function WeatherStep({ advisor }) {
             <IconPin width={18} height={18} />
             <div>
               <b>{label(place.place)}</b>
-              <small>{t("weather.period", { start: fmtDate(place.weather.period.start), end: fmtDate(place.weather.period.end) })}</small>
+              <small>{t("weather.years", { start: place.weather.years.start, end: place.weather.years.end })}</small>
             </div>
+          </div>
+
+          {/* Which season will the crop grow in? Each button shows its months. */}
+          <p className="season-label">{t("weather.season")}</p>
+          <div className="season-picker" role="radiogroup" aria-label={t("weather.season")}>
+            {SEASONS.map((s) => (
+              <button
+                type="button"
+                key={s}
+                role="radio"
+                aria-checked={season === s}
+                className={`season-option ${season === s ? "is-selected" : ""}`}
+                onClick={() => fill(place.weather, s)}
+              >
+                <b>{t(`season.${s}`)}</b>
+                <small>{monthRange(place.weather.seasons[s].months, lang)}</small>
+              </button>
+            ))}
           </div>
           <small className="weather-note">{t("weather.estimate")}</small>
         </div>
@@ -115,7 +147,7 @@ export default function WeatherStep({ advisor }) {
           value={values.temperature} onChange={(v) => setValue("temperature", v)} />
         <NumberField id="humidity" label={t("weather.humidity")} icon={<IconDrop />} unit="%" min={0} max={100}
           value={values.humidity} onChange={(v) => setValue("humidity", v)} />
-        <NumberField id="rainfall" label={t("weather.rainfall")} icon={<IconRain />} unit="mm" min={0} max={5000}
+        <NumberField id="rainfall" label={t("weather.rainfall")} icon={<IconRain />} unit={t("weather.rainUnit")} min={0} max={5000}
           value={values.rainfall} onChange={(v) => setValue("rainfall", v)} />
       </div>
     </div>

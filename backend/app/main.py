@@ -53,7 +53,8 @@ async def lifespan(app: FastAPI):
 
     def load_soil():
         from .soil import SoilClassifier  # ONNX model, see scripts/export_soil_onnx.py
-        return SoilClassifier(MODEL_DIR / "soil_classifier.onnx")
+        reference = MODEL_DIR / "soil_reference.npz"  # for the "is this soil?" check
+        return SoilClassifier(MODEL_DIR / "soil_classifier.onnx", reference if reference.exists() else None)
 
     app.state.crop, app.state.crop_error = _load("crop model", load_crop)
     app.state.soil, app.state.soil_error = _load("soil model", load_soil)
@@ -145,13 +146,14 @@ async def places(q: str = Query(..., min_length=2, max_length=100, description="
 
 
 @app.get("/weather", response_model=WeatherResponse)
-async def recent_weather(
+async def season_weather(
     lat: float = Query(..., ge=-90, le=90, description="Latitude"),
     lon: float = Query(..., ge=-180, le=180, description="Longitude"),
 ):
-    """Last 30 days of weather for a location, ready to fill the crop form."""
+    """Usual weather of each growing season (Kharif, Rabi, Zaid) at a location,
+    averaged over the last 5 years, ready to fill the crop form."""
     try:
-        return await weather.recent_weather(lat, lon)
+        return await weather.seasonal_weather(lat, lon)
     except weather.WeatherError as e:
         # 502 Bad Gateway = "a service I depend on failed", not the user's fault.
         raise HTTPException(status_code=502, detail=str(e))

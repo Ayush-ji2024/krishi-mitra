@@ -8,6 +8,11 @@ servers (e.g. Render's 512 MB). PyTorch is then only needed for training.
 Everything the API needs is stored inside the .onnx file as metadata:
 class names, image size and the normalisation mean/std.
 
+The model has TWO outputs:
+  logits   - one score per soil class (as in training)
+  features - the 1280-number "fingerprint" before the last layer, used by
+             scripts/calibrate_soil_ood.py to recognise photos that are not soil.
+
 Usage (needs the training requirements, i.e. PyTorch):
   python scripts/export_soil_onnx.py
   -> models/soil_classifier.onnx   (checked against PyTorch before saving)
@@ -36,6 +41,19 @@ def load_torch_model(path: Path):
     return model, ckpt
 
 
+class WithFeatures(nn.Module):
+    """MobileNetV2 that also returns its pooled features (the classifier's input)."""
+
+    def __init__(self, model):
+        super().__init__()
+        self.model = model
+
+    def forward(self, x):
+        f = self.model.features(x)
+        f = nn.functional.adaptive_avg_pool2d(f, 1).flatten(1)
+        return self.model.classifier(f), f
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--checkpoint", type=Path, default=Path("models/soil_classifier.pt"))
@@ -48,9 +66,9 @@ def main():
     # Batch size is dynamic, so the API could score several photos at once.
     dummy = torch.randn(1, 3, size, size)
     torch.onnx.export(
-        model, dummy, args.out,
-        input_names=["image"], output_names=["logits"],
-        dynamic_axes={"image": {0: "batch"}, "logits": {0: "batch"}},
+        WithFeatures(model).eval(), dummy, args.out,
+        input_names=["image"], output_names=["logits", "features"],
+        dynamic_axes={"image": {0: "batch"}, "logits": {0: "batch"}, "features": {0: "batch"}},
         opset_version=17, dynamo=False,
     )
 
@@ -74,7 +92,7 @@ def main():
     x = torch.randn(8, 3, size, size)
     with torch.no_grad():
         expected = model(x).numpy()
-    got = session.run(None, {"image": x.numpy()})[0]
+    got = session.run(["logits"], {"image": x.numpy()})[0]
     diff = float(np.abs(expected - got).max())
     same_class = bool((expected.argmax(1) == got.argmax(1)).all())
     print(f"Saved {args.out} ({args.out.stat().st_size / 1e6:.1f} MB)")

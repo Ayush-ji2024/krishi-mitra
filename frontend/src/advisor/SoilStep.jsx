@@ -28,7 +28,8 @@ export default function SoilStep({ advisor, soilTypes }) {
     try {
       const prediction = await api.predictSoil(file);
       setPhoto({ url, prediction });
-      setSoilType(prediction.soil_type); // pre-select; the user can still change it
+      // Pre-select the soil only if the photo really looks like soil; the user can still change it.
+      if (prediction.is_soil) setSoilType(prediction.soil_type);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -70,7 +71,13 @@ export default function SoilStep({ advisor, soilTypes }) {
         </label>
 
         <div className="soil-result">
-          {prediction ? (
+          {prediction && !prediction.is_soil ? (
+            // A selfie, a screenshot, a blank picture...: don't pretend it is a soil type.
+            <div className="detect is-unsure">
+              <p className="detect-title">{t("soil.notSoil")}</p>
+              <p className="detect-warn">{t("soil.notSoilHint")}</p>
+            </div>
+          ) : prediction ? (
             <div className={`detect ${prediction.low_confidence ? "is-unsure" : ""}`}>
               <p className="detect-title">{t("soil.looks", { soil: soilName(prediction.soil_type) })}</p>
               {/* One bar per soil type: how sure the model is, and what the runner-up was. */}

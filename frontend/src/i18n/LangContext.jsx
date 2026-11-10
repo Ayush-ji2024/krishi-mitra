@@ -26,7 +26,7 @@ export function LangProvider({ children }) {
   }, [lang]);
 
   // t("home.cta") -> text in the current language (falls back to English).
-  // t("weather.period", { start: "1 Sep" }) fills in {start}.
+  // t("weather.years", { start: 2021 }) fills in {start}.
   const t = (key, vars) => {
     let text = STRINGS[lang][key] ?? STRINGS.en[key] ?? key;
     if (vars) for (const [k, v] of Object.entries(vars)) text = text.replaceAll(`{${k}}`, v);

@@ -3,6 +3,14 @@ scripts/export_soil_onnx.py and predicts the soil type of a photo.
 
 The API uses onnxruntime instead of PyTorch: same answers, ~10x less memory,
 so the backend fits on small free servers. PyTorch is only needed for training.
+
+"Is this even soil?"
+A classifier always picks one of its 4 classes - even for a selfie. So we also
+compare the photo's feature "fingerprint" (the model's 1280 numbers before its
+last layer) with the fingerprints of the training soil photos: if even the most
+similar training photo (k-th most similar, k=1) is not similar enough, the photo
+is probably not soil. The reference fingerprints and the threshold come from
+scripts/calibrate_soil_ood.py (models/soil_reference.npz).
 """
 
 import json
@@ -17,7 +25,7 @@ LOW_CONFIDENCE = 0.60
 
 
 class SoilClassifier:
-    def __init__(self, model_path: Path):
+    def __init__(self, model_path: Path, reference_path: Path | None = None):
         options = ort.SessionOptions()
         options.intra_op_num_threads = 1  # small free servers have ~1 CPU
         self.session = ort.InferenceSession(str(model_path), options, providers=["CPUExecutionProvider"])
@@ -32,6 +40,14 @@ class SoilClassifier:
         self.mean = np.array(json.loads(meta["mean"]), dtype=np.float32).reshape(3, 1, 1)
         self.std = np.array(json.loads(meta["std"]), dtype=np.float32).reshape(3, 1, 1)
         self.input_name = self.session.get_inputs()[0].name
+
+        # Optional "is this soil?" check (see the module docstring).
+        self.bank = None
+        if reference_path is not None:
+            ref = np.load(reference_path)
+            self.bank = ref["features"].astype(np.float32)  # L2-normalised, one row per training photo
+            self.k = int(ref["k"])
+            self.threshold = float(ref["threshold"])
 
     def preprocess(self, image: Image.Image) -> np.ndarray:
         """EXACTLY the validation/test preprocessing used in training, without torchvision:
@@ -51,8 +67,19 @@ class SoilClassifier:
         x = (x - self.mean) / self.std
         return x[np.newaxis]  # add batch dimension
 
+    def run(self, image: Image.Image) -> tuple[np.ndarray, np.ndarray]:
+        """Logits (one per class) and the 1280-number feature fingerprint of one photo."""
+        logits, features = self.session.run(["logits", "features"], {self.input_name: self.preprocess(image)})
+        return logits[0], features[0]
+
+    def soil_similarity(self, features: np.ndarray) -> float:
+        """Cosine similarity to the k-th most similar training soil photo (higher = more soil-like)."""
+        f = features / (np.linalg.norm(features) + 1e-12)
+        sims = self.bank @ f
+        return float(np.partition(sims, -self.k)[-self.k])
+
     def predict(self, image: Image.Image) -> dict:
-        logits = self.session.run(None, {self.input_name: self.preprocess(image)})[0][0]
+        logits, features = self.run(image)
         exp = np.exp(logits - logits.max())  # softmax, numerically stable
         probs = exp / exp.sum()
         best = int(probs.argmax())
@@ -62,4 +89,11 @@ class SoilClassifier:
             "confidence": round(confidence, 4),
             "probabilities": {c: round(float(p), 4) for c, p in zip(self.class_names, probs)},
             "low_confidence": confidence < LOW_CONFIDENCE,
+            **self._soil_check(features),
         }
+
+    def _soil_check(self, features: np.ndarray) -> dict:
+        if self.bank is None:  # no reference file: the check is switched off
+            return {"is_soil": True, "soil_similarity": None}
+        similarity = self.soil_similarity(features)
+        return {"is_soil": similarity >= self.threshold, "soil_similarity": round(similarity, 4)}

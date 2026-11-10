@@ -14,7 +14,7 @@ const SOIL_CLS = { good: "good", possible: "mid", poor: "low" };
 
 export default function ResultsStep({ advisor, onEdit }) {
   const { t, lang } = useLang();
-  const { result, soilType, values, place, reset } = advisor;
+  const { result, soilType, values, place, season, reset } = advisor;
   if (!result) return null;
 
   const allWeak = result.recommendations.every((r) => r.probability < 0.3);
@@ -35,9 +35,10 @@ export default function ResultsStep({ advisor, onEdit }) {
       <div className="input-summary" aria-label={t("res.inputs")}>
         <span className="chip">{t("res.soilLabel")}: <b>{soilName}</b></span>
         {place && <span className="chip"><IconPin width={13} height={13} /> <b>{place.place.name}</b></span>}
+        {season && <span className="chip">🗓 <b>{t(`season.${season}`)}</b></span>}
         <span className="chip">🌡 <b>{values.temperature}°C</b></span>
         <span className="chip">💧 <b>{values.humidity}%</b></span>
-        <span className="chip">🌧 <b>{values.rainfall} mm</b></span>
+        <span className="chip">🌧 <b>{values.rainfall} {t("weather.rainUnit")}</b></span>
         <span className="chip">N-P-K <b>{values.N}-{values.P}-{values.K}</b></span>
         <span className="chip">pH <b>{values.ph}</b></span>
       </div>

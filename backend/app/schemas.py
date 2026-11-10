@@ -59,6 +59,9 @@ class SoilResponse(BaseModel):
     confidence: float
     probabilities: dict[str, float]
     low_confidence: bool
+    is_soil: bool = Field(..., description="False if the photo does not look like the soil photos the model knows")
+    soil_similarity: Optional[float] = Field(
+        None, description="Similarity to the training soil photos (higher = more soil-like); null if the check is off")
 
 
 class Place(BaseModel):
@@ -70,16 +73,24 @@ class Place(BaseModel):
     longitude: float
 
 
-class WeatherPeriod(BaseModel):
-    days: int
-    start: str
-    end: str
+Season = Literal["kharif", "rabi", "zaid"]
+
+
+class SeasonWeather(BaseModel):
+    temperature: float = Field(..., description="Mean temperature of the season (deg C)")
+    humidity: float = Field(..., description="Mean relative humidity of the season (%)")
+    rainfall: float = Field(..., description="Average rainfall per month of the season (mm)")
+    months: list[int] = Field(..., description="Months of the season (1 = January)")
+
+
+class YearRange(BaseModel):
+    start: int
+    end: int
 
 
 class WeatherResponse(BaseModel):
-    temperature: float = Field(..., description="Mean temperature (deg C)")
-    humidity: float = Field(..., description="Mean relative humidity (%)")
-    rainfall: float = Field(..., description="Total rainfall over the period (mm) - an estimate")
-    period: WeatherPeriod
+    default_season: Season = Field(..., description="The next season to sow for, from today's date")
+    years: YearRange = Field(..., description="Years the averages are computed over")
+    seasons: dict[Season, SeasonWeather]
     source: str
     note: str

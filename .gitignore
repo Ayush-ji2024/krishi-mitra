@@ -5,6 +5,7 @@ data/
 models/*
 !models/crop_recommender.joblib
 !models/soil_classifier.onnx
+!models/soil_reference.npz
 
 # OS ki banayi faltu files
 .DS_Store

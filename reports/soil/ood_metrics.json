@@ -1,0 +1,21 @@
+{
+  "method": "cosine similarity to the k-th nearest training photo (k=1)",
+  "threshold": 0.4986,
+  "threshold_rule": "2.0th percentile of validation soil scores",
+  "train_reference_photos": 470,
+  "test_soil_accepted": 0.96,
+  "non_soil_rejected": {
+    "random photos (data/ood)": 0.94,
+    "generated (colours, noise)": 0.833,
+    "app screenshots": 1.0
+  },
+  "non_soil_rejected_overall": 0.931,
+  "auroc_knn": 0.9804,
+  "auroc_max_softmax_baseline": 0.9322,
+  "non_soil_photos_evaluated": {
+    "random photos (data/ood)": 50,
+    "generated (colours, noise)": 6,
+    "app screenshots": 2
+  },
+  "note": "non-soil numbers use only the de-duplicated evaluation half (see script docstring)"
+}

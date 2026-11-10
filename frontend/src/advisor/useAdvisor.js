@@ -13,6 +13,7 @@ export function useAdvisor() {
   const [photo, setPhoto] = useState(null);        // { url, prediction }
   const [values, setValues] = useState(EMPTY);     // the 7 numbers, as strings while typing
   const [place, setPlace] = useState(null);        // { place, weather } after a successful lookup
+  const [season, setSeason] = useState("");        // "kharif" | "rabi" | "zaid" (set from the weather lookup)
   const [result, setResult] = useState(null);
 
   // Any change to the inputs makes old results out of date.
@@ -35,11 +36,12 @@ export function useAdvisor() {
     setPhoto(null);
     setValues(EMPTY);
     setPlace(null);
+    setSeason("");
     setResult(null);
   }
 
   return {
     step, setStep, soilType, setSoilType, photo, setPhoto,
-    values, setValue, setMany, filled, place, setPlace, result, setResult, reset,
+    values, setValue, setMany, filled, place, setPlace, season, setSeason, result, setResult, reset,
   };
 }

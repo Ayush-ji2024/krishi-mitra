@@ -110,6 +110,22 @@ def test_predict_soil_returns_valid_shape(client):
     assert body["soil_type"] in body["probabilities"]
     assert abs(sum(body["probabilities"].values()) - 1) < 0.01
     assert 0 <= body["confidence"] <= 1
+    assert isinstance(body["is_soil"], bool)
+    assert body["soil_similarity"] is not None   # the reference file is loaded
+
+
+@pytest.mark.parametrize("color", [(255, 255, 255), (0, 0, 0), (40, 90, 200)])
+def test_plain_colour_is_not_soil(client, color):
+    # A blank white / black / blue picture must not be called soil.
+    r = client.post("/predict-soil", files={"file": ("x.png", _png_bytes(color), "image/png")})
+    assert r.status_code == 200
+    assert r.json()["is_soil"] is False
+
+
+def test_screenshot_is_not_soil(client):
+    with open("docs/screenshots/home.png", "rb") as f:
+        r = client.post("/predict-soil", files={"file": ("home.png", f, "image/png")})
+    assert r.json()["is_soil"] is False
 
 
 def test_predict_soil_on_real_test_image(client):
@@ -121,6 +137,7 @@ def test_predict_soil_on_real_test_image(client):
         r = client.post("/predict-soil", files={"file": (images[0].name, f, "image/jpeg")})
     assert r.status_code == 200
     assert r.json()["soil_type"] in ["alluvial", "black", "clay", "red"]
+    assert r.json()["is_soil"] is True
 
 
 def test_non_image_upload_is_rejected(client):
