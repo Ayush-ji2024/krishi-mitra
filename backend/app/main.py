@@ -119,8 +119,8 @@ async def predict_soil(request: Request, file: UploadFile = File(...)):
     try:
         image = Image.open(io.BytesIO(data))
         image.load()  # actually decode it, so broken files fail here
-    except (UnidentifiedImageError, OSError):
-        raise HTTPException(status_code=400, detail="The uploaded file is not a valid image.")
+    except (UnidentifiedImageError, OSError) as e:
+        raise HTTPException(status_code=400, detail="The uploaded file is not a valid image.") from e
 
     return soil.predict(image)
 
@@ -142,7 +142,7 @@ async def places(q: str = Query(..., min_length=2, max_length=100, description="
     try:
         return await weather.search_places(q)
     except weather.WeatherError as e:
-        raise HTTPException(status_code=502, detail=str(e))
+        raise HTTPException(status_code=502, detail=str(e)) from e
 
 
 @app.get("/weather", response_model=WeatherResponse)
@@ -156,4 +156,4 @@ async def season_weather(
         return await weather.seasonal_weather(lat, lon)
     except weather.WeatherError as e:
         # 502 Bad Gateway = "a service I depend on failed", not the user's fault.
-        raise HTTPException(status_code=502, detail=str(e))
+        raise HTTPException(status_code=502, detail=str(e)) from e

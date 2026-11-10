@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   backend:
-    name: Backend (pytest)
+    name: Backend (lint + pytest)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,6 +26,9 @@ jobs:
       # Same runtime packages as the server (no PyTorch - the API uses ONNX) + pytest.
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
+
+      - name: Lint (ruff)
+        run: ruff check .
 
       - name: Check that all Python files compile
         run: python -m compileall -q backend scripts

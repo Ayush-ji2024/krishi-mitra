@@ -249,11 +249,16 @@ def save_reports(report_dir: Path, history, test, class_names, extra):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
     ax1.plot(epochs, [h["train_loss"] for h in history], label="train")
     ax1.plot(epochs, [h["val_loss"] for h in history], label="val")
-    ax1.set_title("Loss"); ax1.set_xlabel("epoch"); ax1.legend()
+    ax1.set_title("Loss")
+    ax1.set_xlabel("epoch")
+    ax1.legend()
     ax2.plot(epochs, [h["train_acc"] for h in history], label="train acc")
     ax2.plot(epochs, [h["val_acc"] for h in history], label="val acc")
     ax2.plot(epochs, [h["val_f1"] for h in history], label="val macro-F1", linestyle="--")
-    ax2.set_title("Accuracy / F1"); ax2.set_xlabel("epoch"); ax2.set_ylim(0, 1); ax2.legend()
+    ax2.set_title("Accuracy / F1")
+    ax2.set_xlabel("epoch")
+    ax2.set_ylim(0, 1)
+    ax2.legend()
     fig.tight_layout()
     fig.savefig(report_dir / "training_curves.png", dpi=150)
     plt.close(fig)
@@ -263,7 +268,7 @@ def save_reports(report_dir: Path, history, test, class_names, extra):
                                 digits=3, zero_division=0))
     print("Confusion matrix (rows = true, columns = predicted):")
     print("          " + " ".join(f"{c[:8]:>8}" for c in class_names))
-    for name, row in zip(class_names, cm):
+    for name, row in zip(class_names, cm, strict=True):
         print(f"{name[:8]:>8}  " + " ".join(f"{v:>8}" for v in row))
     print("======================================")
 
@@ -276,7 +281,8 @@ def main():
     parser.add_argument("--report_dir", default="reports/soil")
     parser.add_argument("--head_epochs", type=int, default=5, help="Phase 1: only the new last layer trains.")
     parser.add_argument("--finetune_epochs", type=int, default=15, help="Phase 2: last backbone blocks train too.")
-    parser.add_argument("--unfreeze_blocks", type=int, default=4, help="How many backbone blocks to unfreeze in phase 2.")
+    parser.add_argument("--unfreeze_blocks", type=int, default=4,
+                        help="How many backbone blocks to unfreeze in phase 2.")
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--patience", type=int, default=5, help="Early stopping patience in phase 2.")
@@ -294,8 +300,8 @@ def main():
     class_names = train_ds.classes
     weights, counts = class_weights(train_ds, device)
     print("Classes:", class_names)
-    print("Train images per class:", dict(zip(class_names, counts.tolist())))
-    print("Loss weights per class :", {c: round(w, 2) for c, w in zip(class_names, weights.tolist())})
+    print("Train images per class:", dict(zip(class_names, counts.tolist(), strict=True)))
+    print("Loss weights per class :", {c: round(w, 2) for c, w in zip(class_names, weights.tolist(), strict=True)})
 
     model = build_model(len(class_names), pretrained=not args.no_pretrained).to(device)
     criterion = nn.CrossEntropyLoss(weight=weights)
@@ -331,7 +337,7 @@ def main():
     save_reports(Path(args.report_dir), state["history"], test, class_names, {
         "best_epoch": state["best_epoch"],
         "best_val_macro_f1": round(state["best_f1"], 4),
-        "train_counts": dict(zip(class_names, counts.tolist())),
+        "train_counts": dict(zip(class_names, counts.tolist(), strict=True)),
         "pretrained": not args.no_pretrained,
         "seed": args.seed,
     })

@@ -1,7 +1,7 @@
 """Request/response shapes. FastAPI uses these to validate input automatically
 and to build the interactive docs at /docs."""
 
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -19,7 +19,7 @@ class CropRequest(BaseModel):
     humidity: float = Field(..., ge=0, le=100, description="Relative humidity (%)")
     ph: float = Field(..., ge=0, le=14, description="Soil pH")
     rainfall: float = Field(..., ge=0, le=5000, description="Rainfall (mm)")
-    soil_type: Optional[SoilType] = Field(
+    soil_type: SoilType | None = Field(
         None, description="Optional. If given, crops are re-ranked by soil suitability.")
 
     model_config = {
@@ -34,7 +34,7 @@ class CropRequest(BaseModel):
 class CropSuggestion(BaseModel):
     crop: str
     probability: float = Field(..., description="ML model probability")
-    soil_suitability: Optional[Suitability] = Field(
+    soil_suitability: Suitability | None = Field(
         None, description="FAO ECOCROP rating for the given soil (null if no soil given)")
     score: float = Field(..., description="probability x soil weight; results are sorted by this")
 
@@ -60,15 +60,15 @@ class SoilResponse(BaseModel):
     probabilities: dict[str, float]
     low_confidence: bool
     is_soil: bool = Field(..., description="False if the photo does not look like the soil photos the model knows")
-    soil_similarity: Optional[float] = Field(
+    soil_similarity: float | None = Field(
         None, description="Similarity to the training soil photos (higher = more soil-like); null if the check is off")
 
 
 class Place(BaseModel):
     name: str
-    state: Optional[str] = None
-    district: Optional[str] = None
-    country: Optional[str] = None
+    state: str | None = None
+    district: str | None = None
+    country: str | None = None
     latitude: float
     longitude: float
 

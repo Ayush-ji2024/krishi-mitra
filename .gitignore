@@ -1,13 +1,13 @@
-# Project data & trained models (bade files, GitHub pe nahi jaayenge)
+# Project data and trained models (large files; only the runtime models are committed, see below)
 data/
-# models/ is ignored EXCEPT the two small runtime models the API needs (~20 MB),
+# models/ is ignored EXCEPT the small runtime files the API needs (~21 MB),
 # so a server can deploy straight from GitHub. The PyTorch checkpoint stays local.
 models/*
 !models/crop_recommender.joblib
 !models/soil_classifier.onnx
 !models/soil_reference.npz
 
-# OS ki banayi faltu files
+# Files created by the operating system
 .DS_Store
 Thumbs.db
 # Byte-compiled / optimized / DLL files

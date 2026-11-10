@@ -82,8 +82,9 @@ def upcoming_season(today: date) -> str:
 
 def _season_normals(daily: dict) -> dict:
     """Average temperature & humidity and average monthly rainfall for each season."""
+    # strict=True: lists of different lengths mean a broken response (-> WeatherError).
     rows = list(zip(daily["time"], daily["temperature_2m_mean"],
-                    daily["relative_humidity_2m_mean"], daily["precipitation_sum"]))
+                    daily["relative_humidity_2m_mean"], daily["precipitation_sum"], strict=True))
     result = {}
     for name, months in SEASONS.items():
         temps, hums, rain_total, rain_months = [], [], 0.0, set()

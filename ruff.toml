@@ -1,0 +1,10 @@
+# Python linting (https://docs.astral.sh/ruff/) - run with:  ruff check .
+target-version = "py310"
+line-length = 120
+extend-exclude = ["frontend", "venv", "data"]
+
+[lint]
+# E/W: style, F: real errors (unused imports, undefined names), B: likely bugs, UP: modern syntax
+select = ["E", "F", "W", "B", "UP"]
+# B008: FastAPI's `File(...)` / `Query(...)` defaults are the documented pattern, not a bug.
+ignore = ["B008"]

@@ -24,7 +24,10 @@ def make_archive(first_year=2021, last_year=2025):
     d = date(first_year, 1, 1)
     while d <= date(last_year, 12, 31):
         t, h, r = by_month.get(d.month, (20.0, 50.0, 0.0))
-        time.append(d.isoformat()); temp.append(t); hum.append(h); rain.append(r)
+        time.append(d.isoformat())
+        temp.append(t)
+        hum.append(h)
+        rain.append(r)
         d += timedelta(days=1)
     return {"daily": {"time": time, "temperature_2m_mean": temp,
                       "relative_humidity_2m_mean": hum, "precipitation_sum": rain}}

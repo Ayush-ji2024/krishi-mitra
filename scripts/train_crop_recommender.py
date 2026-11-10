@@ -150,7 +150,7 @@ def save_reports(report_dir: Path, cv_rows, best_name, pipe, X_test, y_test, see
     print(f"Accuracy        : {acc:.3f}")
     print(f"Macro-F1        : {f1:.3f}")
     print(f"Top-3 accuracy  : {top3:.3f}")
-    wrong = [(t, p) for t, p in zip(y_test, y_pred) if t != p]
+    wrong = [(t, p) for t, p in zip(y_test, y_pred, strict=True) if t != p]
     print(f"Mistakes        : {len(wrong)} of {len(y_test)}")
     for t, p in wrong:
         print(f"    true {t:<12} -> predicted {p}")

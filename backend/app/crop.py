@@ -67,7 +67,7 @@ class CropRecommender:
         proba = self.pipeline.predict_proba(x)[0]
 
         results = []
-        for crop, p in zip(self.pipeline.classes_, proba):
+        for crop, p in zip(self.pipeline.classes_, proba, strict=True):
             rating = self.suitability[soil_type][crop] if soil_type else None
             weight = SOIL_WEIGHT[rating] if rating else 1.0
             results.append({

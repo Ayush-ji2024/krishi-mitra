@@ -87,7 +87,7 @@ class SoilClassifier:
         return {
             "soil_type": self.class_names[best],
             "confidence": round(confidence, 4),
-            "probabilities": {c: round(float(p), 4) for c, p in zip(self.class_names, probs)},
+            "probabilities": {c: round(float(p), 4) for c, p in zip(self.class_names, probs, strict=True)},
             "low_confidence": confidence < LOW_CONFIDENCE,
             **self._soil_check(features),
         }

@@ -124,7 +124,8 @@ def phash(img: Image.Image) -> np.ndarray:
 def remove_near_duplicates(records, threshold, loose_threshold=10, max_colour_diff=1.5):
     """
     Group near-duplicate photos (pHash distance <= threshold, or <= loose_threshold
-    with the same average colour; mirrored copies count too) and keep one photo per group - the largest one. Groups that mix labels
+    with the same average colour; mirrored copies count too) and keep one photo per
+    group - the largest one. Groups that mix labels
     are dropped completely, like exact duplicates with conflicting labels.
     """
     hashes, mirrored, colours, sizes = [], [], [], []
@@ -149,7 +150,7 @@ def remove_near_duplicates(records, threshold, loose_threshold=10, max_colour_di
             x = parent[x]
         return x
 
-    for a, b in zip(*np.where(np.triu(same, 1))):
+    for a, b in zip(*np.where(np.triu(same, 1)), strict=True):
         parent[find(a)] = find(b)
     groups = defaultdict(list)
     for i in range(len(records)):
@@ -221,7 +222,7 @@ def print_report(total_found, skipped, n_dupes, conflicts, n_near, near_conflict
         print(f"    - {s}")
     print(f"Exact duplicates removed   : {n_dupes}")
     print(f"Conflicting-label images   : {len(conflicts)} (all copies dropped)")
-    for h, labels, paths in conflicts[:10]:
+    for _hash, labels, paths in conflicts[:10]:
         print(f"    - labels {labels}: {paths}")
     print(f"Near-duplicates removed    : {n_near}")
     print(f"Near-dup. label conflicts  : {len(near_conflicts)} groups, "

@@ -215,6 +215,7 @@ krishi-mitra/
 ├── docs/screenshots/
 ├── models/                       # runtime models (ONNX, joblib, soil fingerprints; ~21 MB)
 ├── render.yaml                   # Render deployment (free plan)
+├── ruff.toml                     # Python lint rules (checked in CI)
 ├── requirements.txt              # API runtime dependencies (pinned, no PyTorch)
 ├── requirements-train.txt        # + PyTorch, ONNX, matplotlib for training
 └── requirements-dev.txt          # + pytest
@@ -266,9 +267,10 @@ python scripts/build_soil_suitability.py     # optional: rebuild backend/app/soi
 ```bash
 uvicorn backend.app.main:app --reload        # http://127.0.0.1:8000/docs
 python -m pytest backend/tests -v
+ruff check .                                 # Python lint (config in ruff.toml)
 ```
 
-On GitHub, [CI](.github/workflows/ci.yml) runs all tests (with the committed models), the frontend lint and the build on every push.
+On GitHub, [CI](.github/workflows/ci.yml) runs the Python lint, all tests (with the committed models), the frontend lint and the build on every push.
 
 ### 5. Run the website
 
