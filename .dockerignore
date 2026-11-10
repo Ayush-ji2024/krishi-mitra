@@ -1,0 +1,7 @@
+# Only backend/, models/ and requirements.txt are needed in the image.
+*
+!requirements.txt
+!backend/
+!models/
+backend/tests/
+**/__pycache__/

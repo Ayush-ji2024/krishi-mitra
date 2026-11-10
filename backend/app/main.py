@@ -24,7 +24,12 @@ logger = logging.getLogger("krishi-mitra")
 MODEL_DIR = Path(os.getenv("MODEL_DIR", "models"))
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 MB
 # Which websites may call this API from the browser (the React dev server by default).
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
+# Comma-separated, e.g. "https://krishi-mitra.vercel.app,http://localhost:5173".
+ALLOWED_ORIGINS = [o.strip().rstrip("/") for o in
+                   os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",") if o.strip()]
+# Optional regex for origins that change, e.g. Vercel preview deployments:
+#   ^https://krishi-mitra(-[a-z0-9-]+)?\.vercel\.app$
+ALLOWED_ORIGIN_REGEX = os.getenv("ALLOWED_ORIGIN_REGEX") or None
 
 
 def _load(name: str, loader):
@@ -65,6 +70,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=ALLOWED_ORIGIN_REGEX,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )

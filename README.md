@@ -29,6 +29,7 @@
 - [Models and results](#models-and-results)
 - [Project structure](#project-structure)
 - [Run it locally](#run-it-locally)
+- [Deploy (live demo)](#deploy-live-demo)
 - [API](#api)
 - [Limitations and future work](#limitations-and-future-work)
 - [Credits](#credits)
@@ -231,6 +232,30 @@ npm run dev                                  # http://localhost:5173
 ```
 
 The frontend reads the backend address from `VITE_API_URL` (see `frontend/.env.example`); the backend allows browser calls from the origins in `ALLOWED_ORIGINS` (default `http://localhost:5173`).
+
+## Deploy (live demo)
+
+The backend runs on a free **Hugging Face Space** (Docker, enough RAM for PyTorch) and the website on **Vercel**.
+
+**1. Backend → Hugging Face Spaces**
+
+```bash
+# needs: a Hugging Face account + a token with "write" access (huggingface.co/settings/tokens)
+$env:HF_TOKEN="hf_..."                                   # macOS/Linux: export HF_TOKEN=hf_...
+python scripts/deploy_space.py --space <hf-username>/krishi-mitra-api
+```
+
+The script uploads the [`Dockerfile`](Dockerfile), `backend/app/`, the trained models and `requirements.txt` (13 files, ~20 MB); Hugging Face builds the image and serves the API at `https://<hf-username>-krishi-mitra-api.hf.space` (check `/health`). Re-run the same command to deploy a new version.
+
+**2. Website → Vercel**
+
+Import the GitHub repo at [vercel.com/new](https://vercel.com/new), set **Root Directory** to `frontend` (Vite is detected automatically) and add the environment variable `VITE_API_URL = https://<hf-username>-krishi-mitra-api.hf.space`. Hash routing (`/#/advisor`) means no rewrite rules are needed.
+
+**3. Allow the website to call the API (CORS)**
+
+In the Space: *Settings → Variables and secrets → New variable* `ALLOWED_ORIGINS = https://<your-site>.vercel.app` (comma-separated for several). Optionally `ALLOWED_ORIGIN_REGEX` for Vercel preview URLs, e.g. `^https://krishi-mitra(-[a-z0-9-]+)?\.vercel\.app$`.
+
+> Free Spaces sleep after ~48 hours without visitors; the first request after that takes about a minute while it wakes up.
 
 ## API
 
